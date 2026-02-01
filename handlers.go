@@ -728,8 +728,26 @@ func (s *server) GetStatus() http.HandlerFunc {
 
 		txtid := userInfo.Get("Id")
 
-		isConnected := clientManager.GetWhatsmeowClient(txtid).IsConnected()
-		isLoggedIn := clientManager.GetWhatsmeowClient(txtid).IsLoggedIn()
+		waClient := clientManager.GetWhatsmeowClient(txtid)
+		isConnected := false
+		isLoggedIn := false
+		displayName := ""
+		profilePictureURL := ""
+
+		if waClient != nil {
+			isConnected = waClient.IsConnected()
+			isLoggedIn = waClient.IsLoggedIn()
+
+			if isLoggedIn && waClient.Store != nil && waClient.Store.ID != nil {
+				displayName = waClient.Store.PushName
+
+				ownJID := waClient.Store.ID.ToNonAD()
+				pic, picErr := waClient.GetProfilePictureInfo(context.Background(), ownJID, &whatsmeow.GetProfilePictureParams{})
+				if picErr == nil && pic != nil && pic.URL != "" {
+					profilePictureURL = pic.URL
+				}
+			}
+		}
 
 		var proxyURL string
 		s.db.QueryRow("SELECT proxy_url FROM users WHERE id = $1", txtid).Scan(&proxyURL)
@@ -781,20 +799,22 @@ func (s *server) GetStatus() http.HandlerFunc {
 		hmacConfigured := len(hmacKey) > 0
 
 		response := map[string]interface{}{
-			"id":              txtid,
-			"name":            userInfo.Get("Name"),
-			"connected":       isConnected,
-			"loggedIn":        isLoggedIn,
-			"token":           userInfo.Get("Token"),
-			"jid":             userInfo.Get("Jid"),
-			"webhook":         userInfo.Get("Webhook"),
-			"events":          userInfo.Get("Events"),
-			"proxy_url":       userInfo.Get("Proxy"),
-			"qrcode":          userInfo.Get("Qrcode"),
-			"history":         userInfo.Get("History"),
-			"proxy_config":    proxyConfig,
-			"s3_config":       s3Config,
-			"hmac_configured": hmacConfigured,
+			"id":                  txtid,
+			"name":                userInfo.Get("Name"),
+			"display_name":        displayName,
+			"profile_picture_url": profilePictureURL,
+			"connected":           isConnected,
+			"loggedIn":            isLoggedIn,
+			"token":               userInfo.Get("Token"),
+			"jid":                 userInfo.Get("Jid"),
+			"webhook":             userInfo.Get("Webhook"),
+			"events":              userInfo.Get("Events"),
+			"proxy_url":           userInfo.Get("Proxy"),
+			"qrcode":              userInfo.Get("Qrcode"),
+			"history":             userInfo.Get("History"),
+			"proxy_config":        proxyConfig,
+			"s3_config":           s3Config,
+			"hmac_configured":     hmacConfigured,
 		}
 		responseJson, err := json.Marshal(response)
 		if err != nil {
