@@ -1155,6 +1155,101 @@ paths:
                   success:
                     type: boolean
                     example: false
+  /chat/archive:
+    post:
+      tags:
+        - Chat
+      summary: Archive or unarchive a chat
+      description: |
+        Archives or unarchives a chat. Use archive true to move the chat to the archive, false to restore it.
+      security:
+        - ApiKeyAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                jid:
+                  type: string
+                  description: Chat JID (e.g. "5511999999999@s.whatsapp.net" or "120363123456789012@g.us")
+                  example: "5511999999999@s.whatsapp.net"
+                archive:
+                  type: boolean
+                  description: true to archive, false to unarchive
+                  example: true
+              required:
+                - jid
+                - archive
+      responses:
+        200:
+          description: Chat archived or unarchived successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  message:
+                    type: string
+                    example: "Chat archived"
+        400:
+          description: Bad Request - Missing jid or invalid JID format
+        500:
+          description: Internal Server Error
+  /chat/mute:
+    post:
+      tags:
+        - Chat
+      summary: Mute or unmute a chat
+      description: |
+        Mutes or unmutes a chat. When muting, you can optionally set a duration in seconds.
+        Use mute true to mute, false to unmute. If duration_seconds is 0 or omitted when muting, the default is 8 hours.
+      security:
+        - ApiKeyAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                jid:
+                  type: string
+                  description: Chat JID (e.g. "5511999999999@s.whatsapp.net" or "120363123456789012@g.us")
+                  example: "5511999999999@s.whatsapp.net"
+                mute:
+                  type: boolean
+                  description: true to mute, false to unmute
+                  example: true
+                duration_seconds:
+                  type: integer
+                  description: Optional. Duration in seconds while mute is true. 0 or omit = 8h default. e.g. 28800=8h, 604800=1 week
+                  example: 28800
+              required:
+                - jid
+                - mute
+      responses:
+        200:
+          description: Chat muted or unmuted successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  message:
+                    type: string
+                    example: "Chat muted"
+        400:
+          description: Bad Request - Missing jid or invalid JID format
+        500:
+          description: Internal Server Error
   /chat/send/image:
     post:
       tags:

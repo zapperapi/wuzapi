@@ -6500,6 +6500,77 @@ func (s *server) ArchiveChat() http.HandlerFunc {
 
 }
 
+func (s *server) MuteChat() http.HandlerFunc {
+
+	type requestMuteStruct struct {
+		Jid              string `json:"jid"`
+		Mute             bool   `json:"mute"`
+		DurationSeconds  int64  `json:"duration_seconds"` // optional; only when mute=true. 0 = 8h (WhatsApp default). e.g. 28800=8h, 604800=1 week
+	}
+
+	return func(w http.ResponseWriter, r *http.Request) {
+		txtid := r.Context().Value("userinfo").(Values).Get("Id")
+
+		client := clientManager.GetWhatsmeowClient(txtid)
+
+		if client == nil {
+			s.Respond(w, r, http.StatusInternalServerError, errors.New("no session"))
+			return
+		}
+
+		decoder := json.NewDecoder(r.Body)
+		var t requestMuteStruct
+		err := decoder.Decode(&t)
+		if err != nil {
+			s.Respond(w, r, http.StatusBadRequest, errors.New("could not decode Payload"))
+			return
+		}
+
+		if t.Jid == "" {
+			s.Respond(w, r, http.StatusBadRequest, errors.New("missing jid in Payload"))
+			return
+		}
+
+		chatJID, err := types.ParseJID(t.Jid)
+		if err != nil {
+			s.Respond(w, r, http.StatusBadRequest, errors.New("invalid Chat JID format"))
+			return
+		}
+
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+
+		var muteDuration time.Duration
+		if t.Mute {
+			if t.DurationSeconds > 0 {
+				muteDuration = time.Duration(t.DurationSeconds) * time.Second
+			} else {
+				muteDuration = 8 * time.Hour // WhatsApp default
+			}
+		}
+
+		err = client.SendAppState(ctx, appstate.BuildMute(chatJID, t.Mute, muteDuration))
+		if err != nil {
+			s.Respond(w, r, http.StatusInternalServerError, errors.New(fmt.Sprintf("failed to mute chat: %s", err)))
+			return
+		}
+		statusText := "Chat muted"
+		if !t.Mute {
+			statusText = "Chat unmuted"
+		}
+		response := map[string]interface{}{
+			"success": true,
+			"message": statusText,
+		}
+		responseJson, err := json.Marshal(response)
+		if err != nil {
+			s.Respond(w, r, http.StatusInternalServerError, err)
+		} else {
+			s.Respond(w, r, http.StatusOK, string(responseJson))
+		}
+	}
+}
+
 // Downloads Sticker and returns base64 representation
 func (s *server) DownloadSticker() http.HandlerFunc {
 
