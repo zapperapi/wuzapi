@@ -1844,8 +1844,12 @@ func (mycli *MyClient) myEventHandler(rawEvt interface{}) {
 		postmap["type"] = "FBMessage"
 		dowebhook = 1
 		log.Info().Str("info", evt.Info.SourceString()).Msg("Facebook message received")
+	case *events.ChatModify:
+		postmap["type"] = "ChatModify"
+		dowebhook = 1
+		log.Info().Str("jid", evt.JID.String()).Msg("Chat modified")
 	default:
-		log.Warn().Str("event", fmt.Sprintf("%+v", evt)).Msg("Unhandled event")
+		log.Warn().Str("type", fmt.Sprintf("%T", evt)).Str("event", fmt.Sprintf("%+v", evt)).Msg("Unhandled event")
 	}
 
 	if dowebhook == 1 {
