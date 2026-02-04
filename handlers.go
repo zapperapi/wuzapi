@@ -25,7 +25,7 @@ import (
 	"github.com/rs/zerolog/log"
 	"github.com/vincent-petithory/dataurl"
 	"go.mau.fi/whatsmeow"
-
+	waBinary "go.mau.fi/whatsmeow/binary"
 	"go.mau.fi/whatsmeow/proto/waCommon"
 	"go.mau.fi/whatsmeow/proto/waE2E"
 
@@ -1899,36 +1899,37 @@ func (s *server) SendLocation() http.HandlerFunc {
 	}
 }
 
-// Sends Buttons (not implemented, does not work)
+// SendButtons envia mensagem com botões no formato Baileys (body, footer, botões url/copy/call/reply, opcional image/video).
 func (s *server) SendButtons() http.HandlerFunc {
 
-	type buttonStruct struct {
-		ButtonId   string
-		ButtonText string
+	type buttonPayload struct {
+		Type        string `json:"type"`        // "url" | "copy" | "call" | "reply"
+		DisplayText string `json:"displayText"`
+		Id          string `json:"id"`
+		CopyCode    string `json:"copyCode,omitempty"`
+		URL         string `json:"url,omitempty"`
+		PhoneNumber string `json:"phoneNumber,omitempty"`
 	}
-	type textStruct struct {
-		Phone   string
-		Title   string
-		Buttons []buttonStruct
-		Id      string
+	type buttonsRequest struct {
+		Phone   string           `json:"Phone"`
+		Body    string           `json:"body"`
+		Title   string           `json:"title"`
+		Footer  string           `json:"footer"`
+		Buttons []buttonPayload  `json:"buttons"`
+		Image   string           `json:"image,omitempty"`
+		Video   string           `json:"video,omitempty"`
+		Id      string           `json:"Id,omitempty"`
 	}
 
 	return func(w http.ResponseWriter, r *http.Request) {
-
 		txtid := r.Context().Value("userinfo").(Values).Get("Id")
-
 		if clientManager.GetWhatsmeowClient(txtid) == nil {
 			s.Respond(w, r, http.StatusInternalServerError, errors.New("no session"))
 			return
 		}
 
-		msgid := ""
-		var resp whatsmeow.SendResponse
-
-		decoder := json.NewDecoder(r.Body)
-		var t textStruct
-		err := decoder.Decode(&t)
-		if err != nil {
+		var t buttonsRequest
+		if err := json.NewDecoder(r.Body).Decode(&t); err != nil {
 			s.Respond(w, r, http.StatusBadRequest, errors.New("could not decode Payload"))
 			return
 		}
@@ -1937,18 +1938,12 @@ func (s *server) SendButtons() http.HandlerFunc {
 			s.Respond(w, r, http.StatusBadRequest, errors.New("missing Phone in Payload"))
 			return
 		}
-
-		if t.Title == "" {
-			s.Respond(w, r, http.StatusBadRequest, errors.New("missing Title in Payload"))
-			return
-		}
-
 		if len(t.Buttons) < 1 {
 			s.Respond(w, r, http.StatusBadRequest, errors.New("missing Buttons in Payload"))
 			return
 		}
 		if len(t.Buttons) > 3 {
-			s.Respond(w, r, http.StatusBadRequest, errors.New("buttons cant more than 3"))
+			s.Respond(w, r, http.StatusBadRequest, errors.New("buttons cannot be more than 3"))
 			return
 		}
 
@@ -1958,34 +1953,172 @@ func (s *server) SendButtons() http.HandlerFunc {
 			return
 		}
 
-		if t.Id == "" {
+		msgid := t.Id
+		if msgid == "" {
 			msgid = clientManager.GetWhatsmeowClient(txtid).GenerateMessageID()
-		} else {
-			msgid = t.Id
 		}
 
-		var buttons []*waE2E.ButtonsMessage_Button
-
-		for _, item := range t.Buttons {
-			buttons = append(buttons, &waE2E.ButtonsMessage_Button{
-				ButtonID:       proto.String(item.ButtonId),
-				ButtonText:     &waE2E.ButtonsMessage_Button_ButtonText{DisplayText: proto.String(item.ButtonText)},
-				Type:           waE2E.ButtonsMessage_Button_RESPONSE.Enum(),
-				NativeFlowInfo: &waE2E.ButtonsMessage_Button_NativeFlowInfo{},
+		// Botões no formato Baileys: name = "quick_reply" ou "cta_url"/"cta_copy"/"cta_call", buttonParamsJson
+		var nativeFlowButtons []*waE2E.InteractiveMessage_NativeFlowMessage_NativeFlowButton
+		for _, b := range t.Buttons {
+			btnName := "quick_reply"
+			if b.Type != "reply" {
+				btnName = "cta_" + b.Type
+			}
+			params := map[string]interface{}{
+				"id":           b.Id,
+				"display_text": b.DisplayText,
+				"disabled":     false,
+			}
+			if b.URL != "" {
+				params["url"] = b.URL
+			}
+			if b.CopyCode != "" {
+				params["copy_code"] = b.CopyCode
+			}
+			if b.PhoneNumber != "" {
+				params["phone_number"] = b.PhoneNumber
+			}
+			paramsJSON, _ := json.Marshal(params)
+			nativeFlowButtons = append(nativeFlowButtons, &waE2E.InteractiveMessage_NativeFlowMessage_NativeFlowButton{
+				Name:             proto.String(btnName),
+				ButtonParamsJSON: proto.String(string(paramsJSON)),
 			})
 		}
 
-		msg2 := &waE2E.ButtonsMessage{
-			ContentText: proto.String(t.Title),
-			HeaderType:  waE2E.ButtonsMessage_EMPTY.Enum(),
-			Buttons:     buttons,
+		// Header no formato Baileys: title e/ou imageMessage/videoMessage + hasMediaAttachment
+		var header *waE2E.InteractiveMessage_Header
+		if t.Image != "" {
+			var filedata []byte
+			if len(t.Image) >= 10 && t.Image[0:10] == "data:image" {
+				dataURL, err := dataurl.DecodeString(t.Image)
+				if err != nil {
+					s.Respond(w, r, http.StatusBadRequest, errors.New("could not decode base64 image from payload"))
+					return
+				}
+				filedata = dataURL.Data
+			} else if isHTTPURL(t.Image) {
+				data, ct, err := fetchURLBytes(r.Context(), t.Image, openGraphImageMaxBytes)
+				if err != nil {
+					s.Respond(w, r, http.StatusBadRequest, errors.New(fmt.Sprintf("failed to fetch image from url: %v", err)))
+					return
+				}
+				mimeType := ct
+				if !strings.HasPrefix(strings.ToLower(mimeType), "image/") {
+					mimeType = "image/jpeg"
+				}
+				parsed, err := dataurl.DecodeString(dataurl.New(data, mimeType).String())
+				if err != nil {
+					s.Respond(w, r, http.StatusInternalServerError, errors.New("could not re-encode image"))
+					return
+				}
+				filedata = parsed.Data
+			} else {
+				s.Respond(w, r, http.StatusBadRequest, errors.New("image must be data:image/... or http(s) URL"))
+				return
+			}
+			uploaded, err := clientManager.GetWhatsmeowClient(txtid).Upload(context.Background(), filedata, whatsmeow.MediaImage)
+			if err != nil {
+				s.Respond(w, r, http.StatusInternalServerError, errors.New(fmt.Sprintf("failed to upload image: %v", err)))
+				return
+			}
+			header = &waE2E.InteractiveMessage_Header{
+				Media:              &waE2E.InteractiveMessage_Header_ImageMessage{ImageMessage: &waE2E.ImageMessage{
+					URL:           proto.String(uploaded.URL),
+					DirectPath:    proto.String(uploaded.DirectPath),
+					MediaKey:      uploaded.MediaKey,
+					FileEncSHA256: uploaded.FileEncSHA256,
+					FileSHA256:    uploaded.FileSHA256,
+					FileLength:    proto.Uint64(uint64(len(filedata))),
+					Mimetype:      proto.String(http.DetectContentType(filedata)),
+				}},
+				Title:              proto.String(t.Title),
+				HasMediaAttachment: proto.Bool(true),
+			}
+		} else if t.Video != "" {
+			var filedata []byte
+			if len(t.Video) >= 4 && t.Video[0:4] == "data" {
+				dataURL, err := dataurl.DecodeString(t.Video)
+				if err != nil {
+					s.Respond(w, r, http.StatusBadRequest, errors.New("could not decode base64 video from payload"))
+					return
+				}
+				filedata = dataURL.Data
+			} else if isHTTPURL(t.Video) {
+				data, ct, err := fetchURLBytes(r.Context(), t.Video, openGraphImageMaxBytes)
+				if err != nil {
+					s.Respond(w, r, http.StatusBadRequest, errors.New(fmt.Sprintf("failed to fetch video from url: %v", err)))
+					return
+				}
+				mimeType := ct
+				if !strings.HasPrefix(strings.ToLower(mimeType), "video/") {
+					mimeType = "video/mp4"
+				}
+				parsed, err := dataurl.DecodeString(dataurl.New(data, mimeType).String())
+				if err != nil {
+					s.Respond(w, r, http.StatusInternalServerError, errors.New("could not re-encode video"))
+					return
+				}
+				filedata = parsed.Data
+			} else {
+				s.Respond(w, r, http.StatusBadRequest, errors.New("video must be data:video/... or http(s) URL"))
+				return
+			}
+			uploaded, err := clientManager.GetWhatsmeowClient(txtid).Upload(context.Background(), filedata, whatsmeow.MediaVideo)
+			if err != nil {
+				s.Respond(w, r, http.StatusInternalServerError, errors.New(fmt.Sprintf("failed to upload video: %v", err)))
+				return
+			}
+			header = &waE2E.InteractiveMessage_Header{
+				Media:              &waE2E.InteractiveMessage_Header_VideoMessage{VideoMessage: &waE2E.VideoMessage{
+					URL:           proto.String(uploaded.URL),
+					DirectPath:    proto.String(uploaded.DirectPath),
+					MediaKey:      uploaded.MediaKey,
+					FileEncSHA256: uploaded.FileEncSHA256,
+					FileSHA256:    uploaded.FileSHA256,
+					FileLength:    proto.Uint64(uint64(len(filedata))),
+					Mimetype:      proto.String(http.DetectContentType(filedata)),
+				}},
+				Title:              proto.String(t.Title),
+				HasMediaAttachment: proto.Bool(true),
+			}
+		} else if t.Title != "" {
+			header = &waE2E.InteractiveMessage_Header{Title: proto.String(t.Title)}
 		}
 
-		resp, err = clientManager.GetWhatsmeowClient(txtid).SendMessage(context.Background(), recipient, &waE2E.Message{ViewOnceMessage: &waE2E.FutureProofMessage{
-			Message: &waE2E.Message{
-				ButtonsMessage: msg2,
+		// interactiveMessage no formato Baileys: body, header, footer, nativeFlowMessage.buttons
+		interactiveMsg := &waE2E.InteractiveMessage{
+			Body:   &waE2E.InteractiveMessage_Body{Text: proto.String(t.Body)},
+			Footer: &waE2E.InteractiveMessage_Footer{Text: proto.String(t.Footer)},
+			InteractiveMessage: &waE2E.InteractiveMessage_NativeFlowMessage_{
+				NativeFlowMessage: &waE2E.InteractiveMessage_NativeFlowMessage{
+					Buttons: nativeFlowButtons,
+				},
 			},
-		}}, whatsmeow.SendRequestExtra{ID: msgid})
+		}
+		if header != nil {
+			interactiveMsg.Header = header
+		}
+
+		// additionalNodes no formato Baileys (native_flow)
+		buttonsAdditionalNodes := []waBinary.Node{
+			{
+				Tag:   "biz",
+				Attrs: waBinary.Attrs{},
+				Content: []waBinary.Node{
+					{
+						Tag:   "interactive",
+						Attrs: waBinary.Attrs{"v": "1", "type": "native_flow"},
+						Content: []waBinary.Node{
+							{Tag: "native_flow", Attrs: waBinary.Attrs{"v": "2", "name": "mixed"}},
+						},
+					},
+				},
+			},
+		}
+		resp, err := clientManager.GetWhatsmeowClient(txtid).SendMessage(context.Background(), recipient, &waE2E.Message{
+			InteractiveMessage: interactiveMsg,
+		}, whatsmeow.SendRequestExtra{ID: msgid, AdditionalNodes: &buttonsAdditionalNodes})
 		if err != nil {
 			s.Respond(w, r, http.StatusInternalServerError, errors.New(fmt.Sprintf("error sending message: %v", err)))
 			return
@@ -1999,30 +2132,36 @@ func (s *server) SendButtons() http.HandlerFunc {
 		} else {
 			s.Respond(w, r, http.StatusOK, string(responseJson))
 		}
-		return
 	}
 }
 
-// SendList
+// SendList envia mensagem de lista no formato Baileys (buttonText, title, description, footer, sections).
 func (s *server) SendList() http.HandlerFunc {
 	type listItem struct {
-		Title string `json:"title"`
-		Desc  string `json:"desc"`
-		RowId string `json:"RowId"`
+		Title       string `json:"title"`
+		Description string `json:"description"`
+		Desc        string `json:"desc,omitempty"`   // compatibilidade
+		RowId       string `json:"rowId"`
+		RowIdLegacy string `json:"RowId,omitempty"`  // compatibilidade
 	}
 	type section struct {
 		Title string     `json:"title"`
 		Rows  []listItem `json:"rows"`
 	}
 	type listRequest struct {
-		Phone      string     `json:"Phone"`
-		ButtonText string     `json:"ButtonText"`
-		Desc       string     `json:"Desc"`
-		TopText    string     `json:"TopText"`
-		Sections   []section  `json:"Sections"`
-		List       []listItem `json:"List"` // compatibility
-		FooterText string     `json:"FooterText"`
-		Id         string     `json:"Id,omitempty"`
+		Phone       string     `json:"Phone"`
+		ButtonText  string     `json:"buttonText"`
+		BtnTextLeg  string     `json:"ButtonText,omitempty"`
+		Description string     `json:"description"`
+		DescLeg     string     `json:"Desc,omitempty"`
+		Title       string     `json:"title"`
+		TopText     string     `json:"TopText,omitempty"`
+		Footer      string     `json:"footer"`
+		FooterText  string     `json:"FooterText,omitempty"`
+		Sections    []section  `json:"sections"`
+		SectionsLeg []section  `json:"Sections,omitempty"`
+		List        []listItem `json:"List,omitempty"`
+		Id          string     `json:"Id,omitempty"`
 	}
 
 	return func(w http.ResponseWriter, r *http.Request) {
@@ -2039,26 +2178,55 @@ func (s *server) SendList() http.HandlerFunc {
 			return
 		}
 
-		// Required fields validation - FooterText is optional
-		if req.Phone == "" || req.ButtonText == "" || req.Desc == "" || req.TopText == "" {
-			s.Respond(w, r, http.StatusBadRequest, errors.New("missing required fields: Phone, ButtonText, Desc, TopText"))
-			return
+		buttonText := req.ButtonText
+		if buttonText == "" {
+			buttonText = req.BtnTextLeg
+		}
+		description := req.Description
+		if description == "" {
+			description = req.DescLeg
+		}
+		title := req.Title
+		if title == "" {
+			title = req.TopText
+		}
+		footer := req.Footer
+		if footer == "" {
+			footer = req.FooterText
+		}
+		sectionsInput := req.Sections
+		if len(sectionsInput) == 0 {
+			sectionsInput = req.SectionsLeg
 		}
 
-		// Priority for Sections, but accepts List for compatibility
+		if req.Phone == "" || buttonText == "" || description == "" {
+			s.Respond(w, r, http.StatusBadRequest, errors.New("missing required fields: Phone, buttonText (or ButtonText), description (or Desc)"))
+			return
+		}
+		if title == "" {
+			title = "Menu"
+		}
+
 		var sections []*waE2E.ListMessage_Section
-		if len(req.Sections) > 0 {
-			for _, sec := range req.Sections {
+		if len(sectionsInput) > 0 {
+			for _, sec := range sectionsInput {
 				var rows []*waE2E.ListMessage_Row
 				for _, item := range sec.Rows {
 					rowId := item.RowId
 					if rowId == "" {
-						rowId = item.Title // fallback
+						rowId = item.RowIdLegacy
+					}
+					if rowId == "" {
+						rowId = item.Title
+					}
+					desc := item.Description
+					if desc == "" {
+						desc = item.Desc
 					}
 					rows = append(rows, &waE2E.ListMessage_Row{
 						RowID:       proto.String(rowId),
 						Title:       proto.String(item.Title),
-						Description: proto.String(item.Desc),
+						Description: proto.String(desc),
 					})
 				}
 				sections = append(sections, &waE2E.ListMessage_Section{
@@ -2071,26 +2239,27 @@ func (s *server) SendList() http.HandlerFunc {
 			for _, item := range req.List {
 				rowId := item.RowId
 				if rowId == "" {
-					rowId = item.Title // fallback
+					rowId = item.RowIdLegacy
+				}
+				if rowId == "" {
+					rowId = item.Title
+				}
+				desc := item.Description
+				if desc == "" {
+					desc = item.Desc
 				}
 				rows = append(rows, &waE2E.ListMessage_Row{
 					RowID:       proto.String(rowId),
 					Title:       proto.String(item.Title),
-					Description: proto.String(item.Desc),
+					Description: proto.String(desc),
 				})
 			}
-
-			// Debug: dynamic title: uses TopText if it exists, otherwise 'Menu'
-			sectionTitle := req.TopText
-			if sectionTitle == "" {
-				sectionTitle = "Menu"
-			}
 			sections = append(sections, &waE2E.ListMessage_Section{
-				Title: proto.String(sectionTitle),
+				Title: proto.String(title),
 				Rows:  rows,
 			})
 		} else {
-			s.Respond(w, r, http.StatusBadRequest, errors.New("no section or list provided"))
+			s.Respond(w, r, http.StatusBadRequest, errors.New("no sections or list provided"))
 			return
 		}
 
@@ -2105,18 +2274,15 @@ func (s *server) SendList() http.HandlerFunc {
 			msgid = clientManager.GetWhatsmeowClient(txtid).GenerateMessageID()
 		}
 
-		// Create the message with ListMessage
 		listMsg := &waE2E.ListMessage{
-			Title:       proto.String(req.TopText),
-			Description: proto.String(req.Desc),
-			ButtonText:  proto.String(req.ButtonText),
+			Title:       proto.String(title),
+			Description: proto.String(description),
+			ButtonText:  proto.String(buttonText),
 			ListType:    waE2E.ListMessage_SINGLE_SELECT.Enum(),
 			Sections:    sections,
 		}
-
-		// Add footer only if provided
-		if req.FooterText != "" {
-			listMsg.FooterText = proto.String(req.FooterText)
+		if footer != "" {
+			listMsg.FooterText = proto.String(footer)
 		}
 
 		// Try with ViewOnceMessage wrapper as some users report this helps with error 405
@@ -2128,11 +2294,21 @@ func (s *server) SendList() http.HandlerFunc {
 			},
 		}
 
+		// additionalNodes no formato Baileys (list / product_list) para mensagem de lista
+		listAdditionalNodes := []waBinary.Node{
+			{
+				Tag:   "biz",
+				Attrs: waBinary.Attrs{},
+				Content: []waBinary.Node{
+					{Tag: "list", Attrs: waBinary.Attrs{"v": "2", "type": "product_list"}},
+				},
+			},
+		}
 		resp, err := clientManager.GetWhatsmeowClient(txtid).SendMessage(
 			context.Background(),
 			recipient,
 			msg,
-			whatsmeow.SendRequestExtra{ID: msgid},
+			whatsmeow.SendRequestExtra{ID: msgid, AdditionalNodes: &listAdditionalNodes},
 		)
 		if err != nil {
 			s.Respond(w, r, http.StatusInternalServerError, errors.New(fmt.Sprintf("error sending message: %v", err)))

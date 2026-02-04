@@ -991,7 +991,7 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"Phone\": \"5511999999999\",\n  \"Title\": \"Pagamento\",\n  \"Body\": \"Escolha uma opcao\",\n  \"Footer\": \"Obrigado\",\n  \"Buttons\": [\n    {\n      \"ButtonId\": \"pix-1\",\n      \"ButtonText\": \"Pagar com PIX\",\n      \"PixPayment\": {\n        \"MerchantName\": \"Minha Loja\",\n        \"Key\": \"minha-chave-pix\",\n        \"KeyType\": \"EMAIL\"\n      }\n    },\n    {\n      \"ButtonId\": \"copy-1\",\n      \"ButtonText\": \"Copiar cupom\",\n      \"ButtonCopy\": \"CUPOM10\"\n    },\n    {\n      \"ButtonId\": \"call-1\",\n      \"ButtonText\": \"Ligar\",\n      \"ButtonUrl\": \"tel:+5511999999999\"\n    },\n    {\n      \"ButtonId\": \"site-1\",\n      \"ButtonText\": \"Abrir site\",\n      \"ButtonUrl\": \"https://example.com\"\n    }\n  ]\n}"
+              "raw": "{\n  \"Phone\": \"5511999999999\",\n  \"body\": \"Escolha uma opcao\",\n  \"title\": \"Pagamento\",\n  \"footer\": \"Obrigado\",\n  \"buttons\": [\n    { \"type\": \"reply\", \"id\": \"opt1\", \"displayText\": \"Opcao 1\" },\n    { \"type\": \"url\", \"id\": \"site-1\", \"displayText\": \"Abrir site\", \"url\": \"https://example.com\" },\n    { \"type\": \"copy\", \"id\": \"copy-1\", \"displayText\": \"Copiar cupom\", \"copyCode\": \"CUPOM10\" }\n  ]\n}"
             },
             "url": {
               "raw": "{{baseUrl}}/chat/send/buttons",

@@ -1452,7 +1452,7 @@ paths:
       tags:
         - Chat
       summary: Sends a List message
-      description: Sends a List message
+      description: Sends a List message (formato Baileys: buttonText, description, title, footer, sections com rows).
       security:
         - ApiKeyAuth: []
       requestBody:
@@ -1461,6 +1461,25 @@ paths:
           application/json:
             schema:
               $ref: '#/definitions/MessageList'
+            example:
+              Phone: "5521971532700"
+              buttonText: "Ver opções"
+              description: "Escolha uma opção da lista"
+              title: "Menu principal"
+              footer: "Obrigado"
+              sections:
+                - title: "Planos"
+                  rows:
+                    - title: "Básico"
+                      description: "Plano básico"
+                      rowId: "plano_basico"
+                    - title: "Premium"
+                      description: "Plano premium"
+                      rowId: "plano_premium"
+                - title: "Suporte"
+                  rows:
+                    - title: "Fale conosco"
+                      rowId: "suporte_contato"
       responses:
         200:
           description: Response
@@ -2460,70 +2479,173 @@ definitions:
 
   MessageList:
     type: object
+    description: "Payload no formato Baileys. Aceita também ButtonText/Desc/TopText/FooterText/Sections/List para compatibilidade."
     required:
       - Phone
-      - ButtonText
-      - Desc
-      - TopText
-      - List
+      - buttonText
+      - description
     properties:
       Phone:
         type: string
         example: "5521971532700"
+      buttonText:
+        type: string
+        description: "Texto do botão que abre a lista"
+        example: "Click Here"
       ButtonText:
         type: string
-        example: Click Here
+        description: "Compatibilidade (alternativa a buttonText)"
+      description:
+        type: string
+        description: "Texto principal da mensagem"
+        example: "This is a list"
       Desc:
         type: string
-        example: This is a list
+        description: "Compatibilidade (alternativa a description)"
+      title:
+        type: string
+        description: "Título da lista (opcional)"
+        example: "Menu"
       TopText:
         type: string
-        example: This is a list
+        description: "Compatibilidade (alternativa a title)"
+      footer:
+        type: string
+        example: "This is a footer text"
       FooterText:
         type: string
-        example: This is a footer text
-      List:
+        description: "Compatibilidade (alternativa a footer)"
+      sections:
         type: array
+        description: "Seções da lista (cada uma com title opcional e rows)"
         items:
           type: object
           properties:
             title:
               type: string
-              example: menu button 1
+              example: "Section 1"
+            rows:
+              type: array
+              items:
+                type: object
+                required:
+                  - title
+                  - rowId
+                properties:
+                  title:
+                    type: string
+                    example: "menu button 1"
+                  description:
+                    type: string
+                    example: "long description"
+                  rowId:
+                    type: string
+                    example: "1"
+      Sections:
+        type: array
+        description: "Compatibilidade (alternativa a sections)"
+      List:
+        type: array
+        description: "Compatibilidade (lista única sem seções)"
+        items:
+          type: object
+          properties:
+            title:
+              type: string
             desc:
               type: string
-              example: long description
+            description:
+              type: string
             RowId:
               type: string
-              example: 1
+            rowId:
+              type: string
+      Id:
+        type: string
+        example: "ABCDABCD1234"
+    example:
+      Phone: "5521971532700"
+      buttonText: "Ver opções"
+      description: "Escolha uma opção da lista"
+      title: "Menu principal"
+      footer: "Obrigado"
+      sections:
+        - title: "Planos"
+          rows:
+            - title: "Básico"
+              description: "Plano básico"
+              rowId: "plano_basico"
+            - title: "Premium"
+              description: "Plano premium"
+              rowId: "plano_premium"
+        - title: "Suporte"
+          rows:
+            - title: "Fale conosco"
+              rowId: "suporte_contato"
 
   MessageButtons:
     type: object
+    description: "Payload no formato Baileys (body, footer, botões url/copy/call/reply, opcional image/video)"
     required:
       - Phone
-      - Body
+      - buttons
     properties:
       Phone:
         type: string
         example: "5521971532700"
-      Body:
+      body:
         type: string
-        example: How you doin
+        description: "Texto principal da mensagem"
+        example: "Choose an option"
+      title:
+        type: string
+        description: "Título do header (usado quando não há image/video)"
+      footer:
+        type: string
+        description: "Rodapé da mensagem"
+      buttons:
+        type: array
+        minItems: 1
+        maxItems: 3
+        items:
+          type: object
+          required:
+            - type
+            - displayText
+            - id
+          properties:
+            type:
+              type: string
+              enum:
+                - url
+                - copy
+                - call
+                - reply
+              description: "url = link; copy = copiar código; call = ligar; reply = resposta rápida"
+            displayText:
+              type: string
+              example: "Open link"
+            id:
+              type: string
+              example: "btn1"
+            copyCode:
+              type: string
+              description: "Obrigatório se type=copy"
+            url:
+              type: string
+              description: "Obrigatório se type=url"
+            phoneNumber:
+              type: string
+              description: "Obrigatório se type=call"
+      image:
+        type: string
+        description: "URL ou data:image/...;base64 para imagem no header"
+      video:
+        type: string
+        description: "URL ou data:video/...;base64 para vídeo no header"
       Id:
         type: string
         example: "ABCDABCD1234"
-      ContextInfo:
-        type: object
-        required:
-          - StanzaId
-          - Participant
-        properties:
-          StanzaId: 
-            type: string
-            example: "3EB06F9067F80BAB89FF" 
-          Participant: 
-            type: string
-            example: "5491155553935@s.whatsapp.net"
 
   MessageText:
     type: object
