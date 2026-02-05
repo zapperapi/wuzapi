@@ -1295,6 +1295,46 @@ paths:
           description: Bad Request - Missing jid or invalid JID format
         500:
           description: Internal Server Error
+  /chat/delete-all:
+    post:
+      tags:
+        - Chat
+      summary: Remove (delete) a chat
+      description: |
+        Removes the chat from the chat list (same as "Delete chat" in WhatsApp).
+      security:
+        - ApiKeyAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                jid:
+                  type: string
+                  description: Chat JID (e.g. "5511999999999@s.whatsapp.net" or "120363123456789012@g.us")
+                  example: "5511999999999@s.whatsapp.net"
+              required:
+                - jid
+      responses:
+        200:
+          description: Chat removed successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  message:
+                    type: string
+                    example: "Chat deleted"
+        400:
+          description: Bad Request - Missing jid or invalid JID format
+        500:
+          description: Internal Server Error
   /chat/send/image:
     post:
       tags:

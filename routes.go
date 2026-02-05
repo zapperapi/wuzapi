@@ -123,6 +123,7 @@ func (s *server) routes() {
 	s.router.Handle("/chat/archive", c.Then(s.ArchiveChat())).Methods("POST")
 	s.router.Handle("/chat/mute", c.Then(s.MuteChat())).Methods("POST")
 	s.router.Handle("/chat/pin", c.Then(s.PinChat())).Methods("POST")
+	s.router.Handle("/chat/delete-all", c.Then(s.DeleteChat())).Methods("POST")
 
 	s.router.Handle("/status/set/text", c.Then(s.SetStatusMessage())).Methods("POST")
 
