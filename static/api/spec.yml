@@ -1302,6 +1302,7 @@ paths:
       summary: Remove (delete) a chat
       description: |
         Removes the chat from the chat list (same as "Delete chat" in WhatsApp).
+        Optionally deletes media from the chat when delete_media is true.
       security:
         - ApiKeyAuth: []
       requestBody:
@@ -1315,6 +1316,10 @@ paths:
                   type: string
                   description: Chat JID (e.g. "5511999999999@s.whatsapp.net" or "120363123456789012@g.us")
                   example: "5511999999999@s.whatsapp.net"
+                delete_media:
+                  type: boolean
+                  description: Optional. If true, also deletes media from the chat. Default false.
+                  example: false
               required:
                 - jid
       responses:

@@ -6907,7 +6907,8 @@ func (s *server) PinChat() http.HandlerFunc {
 func (s *server) DeleteChat() http.HandlerFunc {
 
 	type requestDeleteChatStruct struct {
-		Jid string `json:"jid"`
+		Jid         string `json:"jid"`
+		DeleteMedia bool   `json:"delete_media"` // optional; if true, also deletes media from the chat
 	}
 
 	return func(w http.ResponseWriter, r *http.Request) {
@@ -6939,10 +6940,13 @@ func (s *server) DeleteChat() http.HandlerFunc {
 			return
 		}
 
-		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 		defer cancel()
 
-		err = client.SendAppState(ctx, appstate.BuildDeleteChat(chatJID, time.Time{}, nil))
+		// Sync app state (regular_high contains deleteChat) to avoid 409 conflict / LTHash mismatch
+		_ = client.FetchAppState(ctx, appstate.WAPatchRegularHigh, false, false)
+
+		err = client.SendAppState(ctx, appstate.BuildDeleteChat(chatJID, time.Time{}, nil, t.DeleteMedia))
 		if err != nil {
 			s.Respond(w, r, http.StatusInternalServerError, errors.New(fmt.Sprintf("failed to delete chat: %s", err)))
 			return
