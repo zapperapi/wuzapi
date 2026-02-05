@@ -1345,6 +1345,102 @@ func (s *server) SendImage() http.HandlerFunc {
 	}
 }
 
+// UploadImageFile faz upload de uma imagem para os servidores do WhatsApp e retorna os dados da mídia.
+// Body: JSON com campo base64 (data URL iniciado com data:image/).
+func (s *server) UploadImageFile() http.HandlerFunc {
+	type bodyStruct struct {
+		Base64 string `json:"base64"`
+	}
+	return func(w http.ResponseWriter, r *http.Request) {
+		txtid := r.Context().Value("userinfo").(Values).Get("Id")
+		if clientManager.GetWhatsmeowClient(txtid) == nil {
+			s.Respond(w, r, http.StatusInternalServerError, errors.New("no session"))
+			return
+		}
+		decoder := json.NewDecoder(r.Body)
+		var t bodyStruct
+		if err := decoder.Decode(&t); err != nil {
+			s.Respond(w, r, http.StatusBadRequest, errors.New("could not decode Payload"))
+			return
+		}
+		if t.Base64 == "" {
+			s.Respond(w, r, http.StatusBadRequest, errors.New("missing base64 in Payload"))
+			return
+		}
+		if len(t.Base64) < 11 || t.Base64[:11] != "data:image/" {
+			s.Respond(w, r, http.StatusBadRequest, errors.New("base64 must start with data:image/"))
+			return
+		}
+		dataURL, err := dataurl.DecodeString(t.Base64)
+		if err != nil {
+			s.Respond(w, r, http.StatusBadRequest, errors.New("could not decode base64 encoded data from payload"))
+			return
+		}
+		uploaded, err := clientManager.GetWhatsmeowClient(txtid).Upload(context.Background(), dataURL.Data, whatsmeow.MediaImage)
+		if err != nil {
+			s.Respond(w, r, http.StatusInternalServerError, errors.New(fmt.Sprintf("failed to upload file: %v", err)))
+			return
+		}
+		response := map[string]interface{}{
+			"URL":           uploaded.URL,
+			"DirectPath":    uploaded.DirectPath,
+			"MediaKey":      uploaded.MediaKey,
+			"FileEncSHA256": uploaded.FileEncSHA256,
+			"FileSHA256":    uploaded.FileSHA256,
+		}
+		responseJSON, _ := json.Marshal(response)
+		s.Respond(w, r, http.StatusOK, string(responseJSON))
+	}
+}
+
+// UploadVideoFile faz upload de um vídeo para os servidores do WhatsApp e retorna os dados da mídia.
+// Body: JSON com campo base64 (data URL iniciado com data:video/).
+func (s *server) UploadVideoFile() http.HandlerFunc {
+	type bodyStruct struct {
+		Base64 string `json:"base64"`
+	}
+	return func(w http.ResponseWriter, r *http.Request) {
+		txtid := r.Context().Value("userinfo").(Values).Get("Id")
+		if clientManager.GetWhatsmeowClient(txtid) == nil {
+			s.Respond(w, r, http.StatusInternalServerError, errors.New("no session"))
+			return
+		}
+		decoder := json.NewDecoder(r.Body)
+		var t bodyStruct
+		if err := decoder.Decode(&t); err != nil {
+			s.Respond(w, r, http.StatusBadRequest, errors.New("could not decode Payload"))
+			return
+		}
+		if t.Base64 == "" {
+			s.Respond(w, r, http.StatusBadRequest, errors.New("missing base64 in Payload"))
+			return
+		}
+		if len(t.Base64) < 11 || t.Base64[:11] != "data:video/" {
+			s.Respond(w, r, http.StatusBadRequest, errors.New("base64 must start with data:video/"))
+			return
+		}
+		dataURL, err := dataurl.DecodeString(t.Base64)
+		if err != nil {
+			s.Respond(w, r, http.StatusBadRequest, errors.New("could not decode base64 encoded data from payload"))
+			return
+		}
+		uploaded, err := clientManager.GetWhatsmeowClient(txtid).Upload(context.Background(), dataURL.Data, whatsmeow.MediaVideo)
+		if err != nil {
+			s.Respond(w, r, http.StatusInternalServerError, errors.New(fmt.Sprintf("failed to upload file: %v", err)))
+			return
+		}
+		response := map[string]interface{}{
+			"URL":           uploaded.URL,
+			"DirectPath":    uploaded.DirectPath,
+			"MediaKey":      uploaded.MediaKey,
+			"FileEncSHA256": uploaded.FileEncSHA256,
+			"FileSHA256":    uploaded.FileSHA256,
+		}
+		responseJSON, _ := json.Marshal(response)
+		s.Respond(w, r, http.StatusOK, string(responseJSON))
+	}
+}
+
 // Sends Sticker message
 func (s *server) SendSticker() http.HandlerFunc {
 

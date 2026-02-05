@@ -1452,7 +1452,8 @@ paths:
       tags:
         - Chat
       summary: Sends a List message
-      description: Sends a List message (formato Baileys: buttonText, description, title, footer, sections com rows).
+      description: |
+        Sends a List message (buttonText, description, title, footer, sections com rows).
       security:
         - ApiKeyAuth: []
       requestBody:
@@ -1461,25 +1462,6 @@ paths:
           application/json:
             schema:
               $ref: '#/definitions/MessageList'
-            example:
-              Phone: "5521971532700"
-              buttonText: "Ver opções"
-              description: "Escolha uma opção da lista"
-              title: "Menu principal"
-              footer: "Obrigado"
-              sections:
-                - title: "Planos"
-                  rows:
-                    - title: "Básico"
-                      description: "Plano básico"
-                      rowId: "plano_basico"
-                    - title: "Premium"
-                      description: "Plano premium"
-                      rowId: "plano_premium"
-                - title: "Suporte"
-                  rows:
-                    - title: "Fale conosco"
-                      rowId: "suporte_contato"
       responses:
         200:
           description: Response
@@ -1618,6 +1600,58 @@ paths:
             application/json:
               schema:
                 example: {"code": 200, "data": {"Data": "data:audio/ogg;base64,T2dnUwACAAAAAAA...=", "Mimetype": "audio/ogg"}, "success": true}
+  /files/image:
+    post:
+      tags:
+        - Files
+      summary: Upload image to WhatsApp servers
+      description: "Faz o upload de uma imagem para os servidores do WhatsApp utilizando a função Upload() do whatsmeow. O body deve conter o campo base64 com um data URL iniciado por data:image/"
+      security:
+        - ApiKeyAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/definitions/FileUploadBase64Image'
+
+      responses:
+        200:
+          description: Dados da mídia enviada (URL, DirectPath, MediaKey, FileEncSHA256, FileSHA256)
+          content:
+            application/json:
+              schema:
+                example: {"code":200,"data":{"URL":"https://...","DirectPath":"...","MediaKey":"...","FileEncSHA256":"...","FileSHA256":"..."},"success":true}
+        400:
+          description: "Bad Request - base64 ausente ou não inicia com data:image/"
+        500:
+          description: Internal Server Error - falha no upload ou sessão inexistente
+  /files/video:
+    post:
+      tags:
+        - Files
+      summary: Upload video to WhatsApp servers
+      description: "Faz o upload de um vídeo para os servidores do WhatsApp utilizando a função Upload() do whatsmeow. O body deve conter o campo base64 com um data URL iniciado por data:video/"
+      security:
+        - ApiKeyAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/definitions/FileUploadBase64Video'
+
+      responses:
+        200:
+          description: Dados da mídia enviada (URL, DirectPath, MediaKey, FileEncSHA256, FileSHA256)
+          content:
+            application/json:
+              schema:
+                example: {"code":200,"data":{"URL":"https://...","DirectPath":"...","MediaKey":"...","FileEncSHA256":"...","FileSHA256":"..."},"success":true}
+        400:
+          description: "Bad Request - base64 ausente ou não inicia com data:video/"
+        500:
+          description: Internal Server Error - falha no upload ou sessão inexistente
   /chat/presence:
     post:
       tags:
@@ -2692,6 +2726,24 @@ definitions:
         example: "ABCDABCD1234"
       ContextInfo:
         $ref: "#/definitions/ContextInfo"
+  FileUploadBase64Image:
+    type: object
+    required:
+      - base64
+    properties:
+      base64:
+        type: string
+        description: "Data URL da imagem (deve iniciar com data:image/)"
+        example: "data:image/jpeg;base64,/9j/4AAQSkZJRg..."
+  FileUploadBase64Video:
+    type: object
+    required:
+      - base64
+    properties:
+      base64:
+        type: string
+        description: "Data URL do vídeo (deve iniciar com data:video/)"
+        example: "data:video/mp4;base64,AAAAIGZ0eXBpc29t..."
   MessageAudio:
     type: object
     required:
