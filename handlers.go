@@ -2493,36 +2493,11 @@ func (s *server) SendList() http.HandlerFunc {
 			title = "Menu"
 		}
 
-		var sections []*waE2E.ListMessage_Section
-		if len(sectionsInput) > 0 {
-			for _, sec := range sectionsInput {
-				var rows []*waE2E.ListMessage_Row
-				for _, item := range sec.Rows {
-					rowId := item.RowId
-					if rowId == "" {
-						rowId = item.RowIdLegacy
-					}
-					if rowId == "" {
-						rowId = item.Title
-					}
-					desc := item.Description
-					if desc == "" {
-						desc = item.Desc
-					}
-					rows = append(rows, &waE2E.ListMessage_Row{
-						RowID:       proto.String(rowId),
-						Title:       proto.String(item.Title),
-						Description: proto.String(desc),
-					})
-				}
-				sections = append(sections, &waE2E.ListMessage_Section{
-					Title: proto.String(sec.Title),
-					Rows:  rows,
-				})
-			}
-		} else if len(req.List) > 0 {
-			var rows []*waE2E.ListMessage_Row
-			for _, item := range req.List {
+		// Linhas/seções no formato do buttonParamsJson do native_flow `single_select`
+		// (mesmo shape do Baileys: sections[].rows[] com header/title/description/id).
+		buildRows := func(items []listItem) []map[string]interface{} {
+			rows := make([]map[string]interface{}, 0, len(items))
+			for _, item := range items {
 				rowId := item.RowId
 				if rowId == "" {
 					rowId = item.RowIdLegacy
@@ -2534,15 +2509,28 @@ func (s *server) SendList() http.HandlerFunc {
 				if desc == "" {
 					desc = item.Desc
 				}
-				rows = append(rows, &waE2E.ListMessage_Row{
-					RowID:       proto.String(rowId),
-					Title:       proto.String(item.Title),
-					Description: proto.String(desc),
+				rows = append(rows, map[string]interface{}{
+					"header":      "",
+					"title":       item.Title,
+					"description": desc,
+					"id":          rowId,
 				})
 			}
-			sections = append(sections, &waE2E.ListMessage_Section{
-				Title: proto.String(title),
-				Rows:  rows,
+			return rows
+		}
+
+		var sections []map[string]interface{}
+		if len(sectionsInput) > 0 {
+			for _, sec := range sectionsInput {
+				sections = append(sections, map[string]interface{}{
+					"title": sec.Title,
+					"rows":  buildRows(sec.Rows),
+				})
+			}
+		} else if len(req.List) > 0 {
+			sections = append(sections, map[string]interface{}{
+				"title": title,
+				"rows":  buildRows(req.List),
 			})
 		} else {
 			s.Respond(w, r, http.StatusBadRequest, errors.New("no sections or list provided"))
@@ -2560,36 +2548,62 @@ func (s *server) SendList() http.HandlerFunc {
 			msgid = clientManager.GetWhatsmeowClient(txtid).GenerateMessageID()
 		}
 
-		listMsg := &waE2E.ListMessage{
-			Title:       proto.String(title),
-			Description: proto.String(description),
-			ButtonText:  proto.String(buttonText),
-			ListType:    waE2E.ListMessage_SINGLE_SELECT.Enum(),
-			Sections:    sections,
-		}
-		if footer != "" {
-			listMsg.FooterText = proto.String(footer)
+		// O ListMessage legado é recusado pelo servidor com erro 405 (not-allowed):
+		// o WhatsApp só aceita lista pelo caminho interativo `native_flow`, com um
+		// único botão `single_select` carregando as seções no buttonParamsJson.
+		buttonParams, err := json.Marshal(map[string]interface{}{
+			"title":    buttonText,
+			"sections": sections,
+		})
+		if err != nil {
+			s.Respond(w, r, http.StatusInternalServerError, errors.New(fmt.Sprintf("could not encode list sections: %v", err)))
+			return
 		}
 
-		// Try with ViewOnceMessage wrapper as some users report this helps with error 405
-		msg := &waE2E.Message{
-			ViewOnceMessage: &waE2E.FutureProofMessage{
-				Message: &waE2E.Message{
-					ListMessage: listMsg,
+		interactiveMsg := &waE2E.InteractiveMessage{
+			Body: &waE2E.InteractiveMessage_Body{Text: proto.String(description)},
+			Header: &waE2E.InteractiveMessage_Header{
+				Title:              proto.String(title),
+				HasMediaAttachment: proto.Bool(false),
+			},
+			InteractiveMessage: &waE2E.InteractiveMessage_NativeFlowMessage_{
+				NativeFlowMessage: &waE2E.InteractiveMessage_NativeFlowMessage{
+					Buttons: []*waE2E.InteractiveMessage_NativeFlowMessage_NativeFlowButton{{
+						Name:             proto.String("single_select"),
+						ButtonParamsJSON: proto.String(string(buttonParams)),
+					}},
 				},
 			},
 		}
+		if footer != "" {
+			interactiveMsg.Footer = &waE2E.InteractiveMessage_Footer{Text: proto.String(footer)}
+		}
 
-		// Sem AdditionalNodes aqui: o whatsmeow já anexa o `<biz><list .../></biz>`
-		// sozinho para qualquer ListMessage (getButtonTypeFromMessage atravessa o
-		// wrapper ViewOnceMessage e o type sai do ListType). Um nó `biz` manual
-		// vira o segundo `<biz>` da stanza e o servidor recusa com erro 479
-		// (smax-invalid).
+		msg := &waE2E.Message{InteractiveMessage: interactiveMsg}
+
+		// O whatsmeow não anexa `biz` para InteractiveMessage (getButtonTypeFromMessage
+		// só cobre buttons/list/interactive_response), então o nó vai manualmente aqui,
+		// igual ao SendButtons.
+		listAdditionalNodes := []waBinary.Node{
+			{
+				Tag:   "biz",
+				Attrs: waBinary.Attrs{},
+				Content: []waBinary.Node{
+					{
+						Tag:   "interactive",
+						Attrs: waBinary.Attrs{"v": "1", "type": "native_flow"},
+						Content: []waBinary.Node{
+							{Tag: "native_flow", Attrs: waBinary.Attrs{"v": "2", "name": "mixed"}},
+						},
+					},
+				},
+			},
+		}
 		resp, err := clientManager.GetWhatsmeowClient(txtid).SendMessage(
 			context.Background(),
 			recipient,
 			msg,
-			whatsmeow.SendRequestExtra{ID: msgid},
+			whatsmeow.SendRequestExtra{ID: msgid, AdditionalNodes: &listAdditionalNodes},
 		)
 		if err != nil {
 			s.Respond(w, r, http.StatusInternalServerError, errors.New(fmt.Sprintf("error sending message: %v", err)))

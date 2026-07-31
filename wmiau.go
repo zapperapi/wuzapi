@@ -1401,6 +1401,23 @@ func (mycli *MyClient) myEventHandler(rawEvt interface{}) {
 						} else if list := message.GetListResponseMessage(); list != nil {
 							messageType = "list_response"
 							textContent = list.GetSingleSelectReply().GetSelectedRowID()
+						} else if interactive := message.GetInteractiveResponseMessage(); interactive != nil {
+							// Resposta de lista/botão enviados via native_flow: o id da linha
+							// escolhida vem no paramsJSON ({"id":"..."}).
+							nf := interactive.GetNativeFlowResponseMessage()
+							if nf.GetName() == "single_select" {
+								messageType = "list_response"
+							} else {
+								messageType = "buttons_response"
+							}
+							var params struct {
+								ID string `json:"id"`
+							}
+							if err := json.Unmarshal([]byte(nf.GetParamsJSON()), &params); err == nil && params.ID != "" {
+								textContent = params.ID
+							} else {
+								textContent = nf.GetParamsJSON()
+							}
 						} else if reaction := message.GetReactionMessage(); reaction != nil {
 							messageType = "reaction"
 							textContent = reaction.GetText()
