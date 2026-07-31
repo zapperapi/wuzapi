@@ -2580,21 +2580,16 @@ func (s *server) SendList() http.HandlerFunc {
 			},
 		}
 
-		// additionalNodes no formato Baileys (list / product_list) para mensagem de lista
-		listAdditionalNodes := []waBinary.Node{
-			{
-				Tag:   "biz",
-				Attrs: waBinary.Attrs{},
-				Content: []waBinary.Node{
-					{Tag: "list", Attrs: waBinary.Attrs{"v": "2", "type": "product_list"}},
-				},
-			},
-		}
+		// Sem AdditionalNodes aqui: o whatsmeow já anexa o `<biz><list .../></biz>`
+		// sozinho para qualquer ListMessage (getButtonTypeFromMessage atravessa o
+		// wrapper ViewOnceMessage e o type sai do ListType). Um nó `biz` manual
+		// vira o segundo `<biz>` da stanza e o servidor recusa com erro 479
+		// (smax-invalid).
 		resp, err := clientManager.GetWhatsmeowClient(txtid).SendMessage(
 			context.Background(),
 			recipient,
 			msg,
-			whatsmeow.SendRequestExtra{ID: msgid, AdditionalNodes: &listAdditionalNodes},
+			whatsmeow.SendRequestExtra{ID: msgid},
 		)
 		if err != nil {
 			s.Respond(w, r, http.StatusInternalServerError, errors.New(fmt.Sprintf("error sending message: %v", err)))
