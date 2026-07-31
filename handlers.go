@@ -2579,11 +2579,26 @@ func (s *server) SendList() http.HandlerFunc {
 			interactiveMsg.Footer = &waE2E.InteractiveMessage_Footer{Text: proto.String(footer)}
 		}
 
-		msg := &waE2E.Message{InteractiveMessage: interactiveMsg}
+		// O cliente do WhatsApp só renderiza o interactiveMessage quando ele vem
+		// embrulhado em viewOnceMessage e com messageContextInfo
+		// (deviceListMetadataVersion 2) na mensagem interna — é a receita usada pelo
+		// Baileys. Sem isso o servidor aceita a stanza (200 "Sent") mas o aparelho
+		// descarta a mensagem em silêncio.
+		msg := &waE2E.Message{
+			ViewOnceMessage: &waE2E.FutureProofMessage{
+				Message: &waE2E.Message{
+					MessageContextInfo: &waE2E.MessageContextInfo{
+						DeviceListMetadata:        &waE2E.DeviceListMetadata{},
+						DeviceListMetadataVersion: proto.Int32(2),
+					},
+					InteractiveMessage: interactiveMsg,
+				},
+			},
+		}
 
 		// O whatsmeow não anexa `biz` para InteractiveMessage (getButtonTypeFromMessage
-		// só cobre buttons/list/interactive_response), então o nó vai manualmente aqui,
-		// igual ao SendButtons.
+		// atravessa o viewOnceMessage mas só cobre buttons/list/interactive_response),
+		// então o nó vai manualmente aqui, igual ao SendButtons.
 		listAdditionalNodes := []waBinary.Node{
 			{
 				Tag:   "biz",
