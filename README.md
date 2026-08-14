@@ -52,12 +52,14 @@ When HMAC is configured, all webhooks include an `x-hmac-signature` header with 
 
 ## Updating dependencies
 
-This project uses the whatsmeow library to communicate with WhatsApp. To update the library to the latest version, run:
+This project uses the [hypermeow](https://github.com/polymorfa/hypermeow) library (a fork of whatsmeow) to communicate with WhatsApp. To update the library to the latest version, run:
 
 ```bash
-go get -u go.mau.fi/whatsmeow@latest
+go get github.com/polymorfa/hypermeow@main
 go mod tidy
 ```
+
+Note: hypermeow publishes only pseudo-versions — all semantic tags are retracted. Always use `@main`, never `@latest` or a version tag.
 
 ## Building
 

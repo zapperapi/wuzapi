@@ -18,8 +18,8 @@ import (
 	"net/http"
 
 	"github.com/rs/zerolog/log"
-	"go.mau.fi/whatsmeow"
-	"go.mau.fi/whatsmeow/types"
+	whatsmeow "github.com/polymorfa/hypermeow"
+	"github.com/polymorfa/hypermeow/types"
 )
 
 // GetGroupRequestParticipants lists the participants who have requested to join

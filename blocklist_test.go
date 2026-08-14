@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"go.mau.fi/whatsmeow/types"
+	"github.com/polymorfa/hypermeow/types"
 )
 
 // TestFormatBlocklist covers the response shaping for GET /user/blocklist:
