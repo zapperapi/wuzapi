@@ -12,11 +12,11 @@ import (
 
 	"github.com/jmoiron/sqlx"
 	"github.com/patrickmn/go-cache"
-	"github.com/rs/zerolog/log"
 	"github.com/polymorfa/hypermeow/proto/waAdv"
 	"github.com/polymorfa/hypermeow/store"
 	"github.com/polymorfa/hypermeow/types"
 	"github.com/polymorfa/hypermeow/util/keys"
+	"github.com/rs/zerolog/log"
 	"google.golang.org/protobuf/proto"
 )
 

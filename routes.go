@@ -131,6 +131,13 @@ func (s *server) routes() {
 	s.router.Handle("/status/set/text", c.Then(s.SetStatusMessage())).Methods("POST")
 
 	s.router.Handle("/call/reject", c.Then(s.RejectCall())).Methods("POST")
+	s.router.Handle("/call/start", c.Then(s.StartCall())).Methods("POST")
+	s.router.Handle("/call/answer", c.Then(s.AnswerCall())).Methods("POST")
+	s.router.Handle("/call/hangup", c.Then(s.HangupCall())).Methods("POST")
+	s.router.Handle("/call/audio", c.Then(s.PlayCallAudio())).Methods("POST")
+	// Fora da cadeia de autenticação por token: quem busca é o media-processor,
+	// com um GET simples. O caminho é a credencial (ver recordingStore).
+	s.router.Handle("/call/recording/{token}", s.ServeRecordingTrack()).Methods("GET")
 
 	s.router.Handle("/user/presence", c.Then(s.SendPresence())).Methods("POST")
 	s.router.Handle("/user/presence/subscribe", c.Then(s.SubscribePresence())).Methods("POST")

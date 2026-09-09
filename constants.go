@@ -52,6 +52,14 @@ var supportedEventTypes = []string{
 	"CallOfferNotice",
 	"CallRelayLatency",
 
+	// Calls conducted by this server (feature 020). Distinct from the stanza types
+	// above, which stay exactly as they were: those describe calls we merely observe,
+	// these describe calls we place, answer and end ourselves.
+	"CallStateChanged",
+	"CallRecordingReady",
+	"CallRecordingFailed",
+	"CallSessionsReset",
+
 	// Presence and Activity
 	"Presence",
 	"ChatPresence",

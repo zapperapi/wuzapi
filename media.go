@@ -7,8 +7,8 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/rs/zerolog/log"
 	whatsmeow "github.com/polymorfa/hypermeow"
+	"github.com/rs/zerolog/log"
 )
 
 const (

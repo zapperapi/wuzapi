@@ -17,9 +17,9 @@ import (
 	"fmt"
 	"net/http"
 
-	"github.com/rs/zerolog/log"
 	whatsmeow "github.com/polymorfa/hypermeow"
 	"github.com/polymorfa/hypermeow/types"
+	"github.com/rs/zerolog/log"
 )
 
 // GetGroupRequestParticipants lists the participants who have requested to join

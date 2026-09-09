@@ -24,12 +24,12 @@ import (
 	"github.com/gorilla/mux"
 	"github.com/nfnt/resize"
 	"github.com/patrickmn/go-cache"
-	"github.com/rs/zerolog/log"
-	"github.com/vincent-petithory/dataurl"
 	whatsmeow "github.com/polymorfa/hypermeow"
 	waBinary "github.com/polymorfa/hypermeow/binary"
 	"github.com/polymorfa/hypermeow/proto/waCommon"
 	"github.com/polymorfa/hypermeow/proto/waE2E"
+	"github.com/rs/zerolog/log"
+	"github.com/vincent-petithory/dataurl"
 
 	"github.com/polymorfa/hypermeow/appstate"
 	"github.com/polymorfa/hypermeow/types"
@@ -7115,7 +7115,22 @@ func (s *server) RejectCall() http.HandlerFunc {
 			return
 		}
 
-		log.Info().Str("call_id", t.CallID).Str("call_from", t.CallFrom).Msg("Call rejected")
+		// Feature 020: a rejected call frees the instance's seat and reports the
+		// outcome, exactly like any other way a call can end. Without this,
+		// rejecting a call the platform was conducting would leave the seat held
+		// and the customer without a terminate event.
+		//
+		// The route's input contract is unchanged: consumers that only ever
+		// rejected calls keep working untouched.
+		if mycli := clientManager.GetMyClient(txtid); mycli != nil && mycli.callEngine != nil {
+			if lc, err := GetCallRegistry().get(txtid, t.CallID); err == nil {
+				mycli.callEngine.finish(lc, "rejected")
+			}
+		}
+
+		// call_from is a phone JID; logging it in the clear is what FR-042
+		// forbids. call_id alone identifies the call for diagnostics.
+		log.Info().Str("call_id", t.CallID).Msg("Call rejected")
 		response := map[string]interface{}{"Details": "Call rejected", "CallID": t.CallID}
 		responseJson, err := json.Marshal(response)
 		if err != nil {

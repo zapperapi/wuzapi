@@ -22,8 +22,6 @@ import (
 	"github.com/jmoiron/sqlx"
 	"github.com/mdp/qrterminal/v3"
 	"github.com/patrickmn/go-cache"
-	"github.com/rs/zerolog/log"
-	"github.com/skip2/go-qrcode"
 	whatsmeow "github.com/polymorfa/hypermeow"
 	"github.com/polymorfa/hypermeow/appstate"
 	"github.com/polymorfa/hypermeow/proto/waCompanionReg"
@@ -31,6 +29,8 @@ import (
 	"github.com/polymorfa/hypermeow/types"
 	"github.com/polymorfa/hypermeow/types/events"
 	waLog "github.com/polymorfa/hypermeow/util/log"
+	"github.com/rs/zerolog/log"
+	"github.com/skip2/go-qrcode"
 	"golang.org/x/net/proxy"
 )
 
@@ -42,6 +42,9 @@ type MyClient struct {
 	token          string
 	db             *sqlx.DB
 	s              *server
+	// callEngine drives voice calls for this instance (feature 020). Nil only if the
+	// calling stack failed to install; every caller must tolerate that.
+	callEngine *callEngine
 }
 
 // safeGo runs fn in a new goroutine with a defer recover so a panic inside
@@ -404,6 +407,15 @@ func forceDisconnectClient(userID string) {
 		return
 	}
 
+	// A live call cannot survive the session that carries it. Report it as failed and
+	// free the instance BEFORE the client goes away, so nothing is ever pinned to a
+	// ghost call (FR-022, SC-006). close() then removes the node interception, which
+	// would otherwise leak a goroutine on every reconnect.
+	if mycli := clientManager.GetMyClient(userID); mycli != nil && mycli.callEngine != nil {
+		mycli.callEngine.dropInstanceCall("session-closed")
+		mycli.callEngine.close()
+	}
+
 	if client.IsConnected() {
 		client.Disconnect()
 	}
@@ -548,6 +560,13 @@ func (s *server) startClient(userID string, textjid string, token string, kill c
 
 	// Store the MyClient in clientManager
 	clientManager.SetMyClient(userID, &mycli)
+
+	// Calling stack (feature 020). Built HERE, before any Connect: meowcaller installs
+	// its inbound-node interception on the client and refuses to do so once the
+	// receive loop is running.
+	mycli.callEngine = newCallEngine(userID, client, func(payload map[string]interface{}) {
+		sendEventWithWebHook(&mycli, payload, "")
+	})
 
 	// Webhook HTTP client for outgoing webhook deliveries.
 	webhookClient := resty.New()
@@ -808,6 +827,22 @@ func (mycli *MyClient) myEventHandler(rawEvt interface{}) {
 	case *events.Connected, *events.PushNameSetting:
 		postmap["type"] = "Connected"
 		dowebhook = 1
+		// No call survives a (re)connection: the engine's state is in memory only.
+		// Telling the platform so is what lets it close records left ACTIVE by a
+		// restart, instead of leaving the instance pinned to a ghost call
+		// (FR-022, SC-006).
+		if mycli.callEngine != nil {
+			mycli.callEngine.dropInstanceCall("session-reset")
+			safeGo("callSessionsReset", func() {
+				sendEventWithWebHook(mycli, map[string]interface{}{
+					"type": "CallSessionsReset",
+					"event": map[string]interface{}{
+						"InstanceID": mycli.userID,
+						"Timestamp":  time.Now().UTC().Format(time.RFC3339),
+					},
+				}, "")
+			})
+		}
 		if len(mycli.WAClient.Store.PushName) == 0 {
 			break
 		}

@@ -519,6 +519,10 @@ func main() {
 	}
 	s.routes()
 
+	// Feature 020: expira as trilhas de gravação que ninguém buscou, para que voz
+	// de titular identificável não fique em disco pelo tempo de vida do processo.
+	StartRecordingSweeper()
+
 	s.connectOnStartup()
 
 	if serverMode == Stdio {

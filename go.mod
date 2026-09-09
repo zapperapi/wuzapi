@@ -17,9 +17,15 @@ require (
 
 require (
 	github.com/PuerkitoBio/goquery v1.10.3
+	github.com/hajimehoshi/go-mp3 v0.3.4
 	github.com/justinas/alice v1.2.0
 	github.com/lib/pq v1.10.9
 	github.com/nfnt/resize v0.0.0-20180221191011-83c6a9932646
+	github.com/pion/datachannel v1.6.0
+	github.com/pion/dtls/v3 v3.1.2
+	github.com/pion/logging v0.2.4
+	github.com/pion/opus v0.1.0
+	github.com/pion/sctp v1.9.4
 	github.com/polymorfa/hypermeow v0.0.0-20260811214557-f9db181f1dfa
 	github.com/rabbitmq/amqp091-go v1.10.0
 	github.com/vincent-petithory/dataurl v1.0.0
@@ -43,6 +49,8 @@ require (
 	github.com/dustin/go-humanize v1.0.1 // indirect
 	github.com/ncruces/go-strftime v0.1.9 // indirect
 	github.com/petermattis/goid v0.0.0-20260713124913-97594f28f5ca // indirect
+	github.com/pion/randutil v0.1.0 // indirect
+	github.com/pion/transport/v4 v4.0.1 // indirect
 	github.com/polymorfa/libsignal-protocol-go v0.2.3-0.20260806162910-a2adef2e8a11 // indirect
 	github.com/remyoudompheng/bigfft v0.0.0-20230129092748-24d4a6f8daec // indirect
 	github.com/rs/xid v1.6.0 // indirect
