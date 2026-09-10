@@ -296,6 +296,10 @@ func main() {
 		log.Info().Str("queue_server_id", queueServerID).Msg("Queue server ID configured from environment variable")
 	}
 
+	// Softphone (feature 021). Ausência de configuração desabilita a feature; não impede a
+	// subida. Ver softphone_config.go.
+	loadSoftphoneConfig()
+
 	log.Info().
 		Bool("enabled", *webhookRetryEnabled).
 		Int("count", *webhookRetryCount).

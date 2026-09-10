@@ -106,6 +106,25 @@ func (r *callRecorder) Sink() meowcaller.AudioSink {
 	})
 }
 
+// TeeSink layers an extra consumer on top of the recorder's own sink.
+//
+// Feature 021 (research §R6): a live call needs the contact's voice in two places at once --
+// the recording and the agent's browser. meowcaller's Call.Receive replaces the sink instead
+// of fanning out, so without this tee, granting a recording would silence the agent.
+//
+// The recorder writes FIRST and the extra consumer second, deliberately: the recorder is the
+// clock that keeps both tracks the same length, and a slow or panicking consumer must not be
+// able to skew it. It is the mirror image of WrapSource on the source side.
+func (r *callRecorder) TeeSink(extra meowcaller.AudioSink) meowcaller.AudioSink {
+	if extra == nil {
+		return r.Sink()
+	}
+	return meowcaller.SinkFunc(func(frame []float32) {
+		r.writeFrame(frame)
+		_ = extra.WriteFrame(frame)
+	})
+}
+
 func (r *callRecorder) writeFrame(remoteFrame []float32) {
 	r.mu.Lock()
 	defer r.mu.Unlock()

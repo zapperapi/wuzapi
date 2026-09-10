@@ -7123,10 +7123,16 @@ func (s *server) RejectCall() http.HandlerFunc {
 		// The route's input contract is unchanged: consumers that only ever
 		// rejected calls keep working untouched.
 		if mycli := clientManager.GetMyClient(txtid); mycli != nil && mycli.callEngine != nil {
+			// Feature 021: a oferta deixa de estar pendente, para que um aceite tardio de
+			// outro atendente não ressuscite uma chamada que já foi recusada.
+			mycli.callEngine.takePending(t.CallID)
 			if lc, err := GetCallRegistry().get(txtid, t.CallID); err == nil {
 				mycli.callEngine.finish(lc, "rejected")
 			}
 		}
+
+		// Feature 021: todos os componentes param de sinalizar (FR-024, US4-AS5).
+		publishIncomingCleared(txtid, t.CallID, incomingClearedRejected)
 
 		// call_from is a phone JID; logging it in the clear is what FR-042
 		// forbids. call_id alone identifies the call for diagnostics.

@@ -51,6 +51,11 @@ var callOutcomeByReason = map[string]CallOutcome{
 	"bye":              CallOutcomeCompleted,
 	"accept_elsewhere": CallOutcomeCompleted,
 	"connection-error": CallOutcomeFailed,
+
+	// Feature 021: o atendente não voltou dentro do período de graça (FR-039). Motivo
+	// próprio para o log distinguir "a ligação falhou" de "o atendente sumiu"; o desfecho
+	// publicado ao cliente é o mesmo `FAILED` nos dois casos.
+	callEndReasonAgentLost: CallOutcomeFailed,
 }
 
 // resolveCallOutcome maps an OnEnd reason to an outcome, or reports that the table
@@ -129,10 +134,25 @@ func (e *callEngine) onIncomingCall(call *meowcaller.Call) {
 		Str("call_id", call.ID()).
 		Msg("Incoming call offer registered")
 
+	// Feature 021: a oferta toca em todos os atendentes conectados desta instância. Sem
+	// nenhum conectado, isto é um laço sobre um mapa vazio, e o caminho da 020 segue
+	// exatamente como está (FR-021, FR-025).
+	publishIncomingCall(e.instanceID, call.ID(), call.Peer().String())
+
 	call.OnEnd(func(reason string) {
 		e.mu.Lock()
+		_, wasPending := e.pending[call.ID()]
 		delete(e.pending, call.ID())
 		e.mu.Unlock()
+
+		// Uma oferta que morre AINDA pendente é o contato desistindo antes de qualquer
+		// aceite: os componentes precisam parar de tocar (FR-024, US4-AS6). Se ela já não
+		// estava pendente, alguém a tomou, e quem cessa a sinalização é quem a tomou —
+		// com o motivo correto, que aqui não temos como saber.
+		if wasPending {
+			publishIncomingCleared(e.instanceID, call.ID(), incomingClearedAbandoned)
+		}
+
 		// Only report calls the platform actually took: an unanswered offer that
 		// expires is already described by the CallTerminate stanza, and publishing a
 		// second event for it would duplicate what feature 018 delivers.
@@ -363,10 +383,99 @@ func (e *callEngine) publish(lc *liveCall, state CallState, outcome CallOutcome,
 	if reason != "" {
 		event["Reason"] = reason
 	}
+
+	// Feature 021: autoria da chamada, quando ela é conduzida ao vivo (FR-053, FR-055).
+	//
+	// Campo adicional em objeto existente — um leitor antigo o ignora, e SC-015 continua
+	// valendo. Serve principalmente à chamada **entrante**: ali o `manager` não sabe quem
+	// venceu a corrida até o servidor de instância dizer.
+	if session := softphoneSessionConducting(e.instanceID, lc.CallID); session != nil {
+		agent := session.Agent()
+		event["AgentID"] = agent.ID
+		if agent.DisplayName != "" {
+			event["AgentDisplayName"] = agent.DisplayName
+		}
+	}
+
 	e.emit(map[string]interface{}{
 		"type":  "CallStateChanged",
 		"event": event,
 	})
+
+	// Feature 021: a mesma transição vai, em um salto, às sessões de softphone abertas nesta
+	// instância. O webhook continua sendo o caminho do cliente (FR-003); este é o caminho do
+	// atendente, e existe porque SC-005 pede o estado no componente em 1 segundo — algo que
+	// a fila do webhook não entrega e nem deveria.
+	e.publishToAgents(lc, state, outcome, reason)
+}
+
+// publishToAgents entrega a transição às sessões de softphone da instância (FR-013, FR-014).
+func (e *callEngine) publishToAgents(lc *liveCall, state CallState, outcome CallOutcome, reason string) {
+	registry := GetSoftphoneRegistry()
+	if len(registry.sessions(e.instanceID)) == 0 {
+		return
+	}
+
+	data := map[string]any{
+		"callId":    lc.CallID,
+		"state":     softphoneCallState(state),
+		"direction": string(lc.Direction),
+		"contact":   map[string]any{"jid": lc.Peer},
+		"at":        time.Now().UTC().Format(time.RFC3339),
+	}
+	if state == CallStateEnded {
+		data["endedReason"] = softphoneEndedReason(outcome)
+	}
+	if lc.Recording {
+		data["recording"] = map[string]any{"requested": true, "granted": true}
+	}
+
+	registry.broadcast(e.instanceID, map[string]any{"t": "call.state", "d": data})
+
+	// Chamada encerrada libera a sessão para a próxima e publica a linha livre.
+	if state == CallStateEnded {
+		detachAgentFromCall(e.instanceID, lc.CallID)
+		registry.broadcast(e.instanceID, map[string]any{
+			"t": "line.update",
+			"d": lineStatePayload(e.instanceID),
+		})
+	}
+	_ = reason
+}
+
+// softphoneCallState traduz o estado persistido para o vocabulário da sessão.
+//
+// São vocabulários distintos de propósito: o registro e o webhook falam RINGING/ACTIVE/ENDED,
+// que é o que a 020 publica e não pode mudar (SC-015); a sessão precisa de DIALING e
+// RECONNECTING, que descrevem o que o atendente vê e não existem no registro.
+func softphoneCallState(state CallState) string {
+	switch state {
+	case CallStateRinging:
+		return "RINGING"
+	case CallStateActive:
+		return "ACTIVE"
+	case CallStateEnded:
+		return "ENDED"
+	}
+	return "IDLE"
+}
+
+// softphoneEndedReason traduz o desfecho persistido nos seis motivos que FR-014 exige
+// distinguir. Nenhum desfecho novo é criado: é a mesma informação, na linguagem da sessão.
+func softphoneEndedReason(outcome CallOutcome) string {
+	switch outcome {
+	case CallOutcomeTerminatedByBusiness:
+		return "BY_AGENT"
+	case CallOutcomeCompleted:
+		return "BY_CONTACT"
+	case CallOutcomeRejected:
+		return "REJECTED"
+	case CallOutcomeMissed:
+		return "MISSED"
+	case CallOutcomeUnavailable:
+		return "UNAVAILABLE"
+	}
+	return "FAILED"
 }
 
 // dropInstanceCall ends whatever call an instance is on, with a FAILED outcome.

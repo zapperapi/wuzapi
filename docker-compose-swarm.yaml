@@ -5,8 +5,26 @@ services:
     image: asternic/wuzapi:latest
     networks:
       - network_public
+    # Mídia do softphone (feature 021). `mode: host` é obrigatório: o modo ingress passa pela
+    # malha de roteamento do Swarm e substitui o IP de origem, o que quebra o casamento de
+    # candidatos ICE. Uma porta UDP muxada serve todas as sessões; a TCP é a rota de fuga para
+    # redes que bloqueiam UDP. Ver DEPLOY_SOFTPHONE.md.
+    ports:
+      - target: 3478
+        published: ${SOFTPHONE_MEDIA_UDP_PORT:-3478}
+        protocol: udp
+        mode: host
+      - target: 3479
+        published: ${SOFTPHONE_MEDIA_TCP_PORT:-3479}
+        protocol: tcp
+        mode: host
     environment:
       - WUZAPI_ADMIN_TOKEN=${WUZAPI_ADMIN_TOKEN}
+      - SOFTPHONE_TOKEN_SECRET=${SOFTPHONE_TOKEN_SECRET}
+      - SOFTPHONE_ALLOWED_ORIGINS=${SOFTPHONE_ALLOWED_ORIGINS}
+      - SOFTPHONE_PUBLIC_IP=${SOFTPHONE_PUBLIC_IP}
+      - SOFTPHONE_MEDIA_UDP_PORT=${SOFTPHONE_MEDIA_UDP_PORT:-3478}
+      - SOFTPHONE_MEDIA_TCP_PORT=${SOFTPHONE_MEDIA_TCP_PORT:-3479}
       - DB_USER=${DB_USER:-wuzapi}
       - DB_PASSWORD=${DB_PASSWORD:-wuzapi}
       - DB_NAME=${DB_NAME:-wuzapi}

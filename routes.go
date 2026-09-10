@@ -139,6 +139,18 @@ func (s *server) routes() {
 	// com um GET simples. O caminho é a credencial (ver recordingStore).
 	s.router.Handle("/call/recording/{token}", s.ServeRecordingTrack()).Methods("GET")
 
+	// Sessão de tempo real do softphone (feature 021).
+	//
+	// Também fora da cadeia `authalice`, e por uma razão de segurança, não de conveniência:
+	// o socket é autenticado pela credencial de curta duração do atendente, que **não** pode
+	// alcançar mensagens, contatos ou qualquer outro recurso da instância (FR-061). Passá-lo
+	// pelo `authalice` exigiria o token da instância — a chave que a feature inteira existe
+	// para manter fora do navegador.
+	//
+	// Precisa vir antes do servidor de arquivos estáticos lá embaixo: o mux casa na ordem de
+	// registro, e o `PathPrefix("/")` engoliria qualquer rota declarada depois dele.
+	s.router.Handle("/softphone", s.SoftphoneWS()).Methods("GET")
+
 	s.router.Handle("/user/presence", c.Then(s.SendPresence())).Methods("POST")
 	s.router.Handle("/user/presence/subscribe", c.Then(s.SubscribePresence())).Methods("POST")
 	s.router.Handle("/user/info", c.Then(s.GetUser())).Methods("POST")

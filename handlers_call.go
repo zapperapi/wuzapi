@@ -78,6 +78,10 @@ func (s *server) StartCall() http.HandlerFunc {
 	type startCallStruct struct {
 		Phone  string `json:"Phone"`
 		Record bool   `json:"Record"`
+		// AgentID identifica o atendente que conduz a chamada ao vivo (feature 021).
+		// Vazio significa chamada automatizada por API, que é o caminho da 020 e continua
+		// funcionando sem alteração (FR-003).
+		AgentID string `json:"AgentID"`
 	}
 
 	return func(w http.ResponseWriter, r *http.Request) {
@@ -129,10 +133,27 @@ func (s *server) StartCall() http.HandlerFunc {
 		GetCallRegistry().bind(txtid, call.ID(), call)
 		engine.watch(lc, call)
 
+		// Chamada ao vivo: a voz do atendente passa a ser a fonte de áudio da chamada, e a
+		// do contato passa a chegar ao navegador dele (feature 021).
+		//
+		// Falhar aqui **não** derruba a chamada que acabou de ser originada: o contato já
+		// está tocando, e desistir agora produziria uma ligação fantasma no aparelho dele. O
+		// atendente recebe a transição de estado normalmente e ouve silêncio, que é uma
+		// falha diagnosticável — ao contrário de uma chamada que some sem explicação.
+		if t.AgentID != "" {
+			if err := attachAgentToCall(txtid, t.AgentID, lc); err != nil {
+				log.Error().Err(err).
+					Str("instanceID", txtid).
+					Str("call_id", call.ID()).
+					Msg("Softphone agent could not be attached to the call it started")
+			}
+		}
+
 		log.Info().
 			Str("instanceID", txtid).
 			Str("call_id", call.ID()).
 			Bool("record", t.Record).
+			Bool("live", t.AgentID != "").
 			Msg("Outbound call placed")
 
 		s.respondCall(w, r, "Call started", map[string]interface{}{
@@ -148,6 +169,9 @@ func (s *server) AnswerCall() http.HandlerFunc {
 	type answerCallStruct struct {
 		CallID string `json:"CallID"`
 		Record bool   `json:"Record"`
+		// AgentID identifica o atendente que aceitou a chamada ao vivo (feature 021).
+		// Vazio mantém o caminho automatizado da 020 (FR-003, FR-025).
+		AgentID string `json:"AgentID"`
 	}
 
 	return func(w http.ResponseWriter, r *http.Request) {
@@ -173,6 +197,14 @@ func (s *server) AnswerCall() http.HandlerFunc {
 		// must see "no longer available" rather than act on a dead handle (FR-011).
 		call := engine.takePending(t.CallID)
 		if call == nil {
+			// Feature 021, US4-AS4: quem perde a corrida precisa saber que a chamada **já
+			// foi atendida**, e não que ela nunca existiu. A diferença aparece na tela do
+			// atendente — "atendida por outro" é situação normal numa operação com vários
+			// atendentes; "não encontrada" faz a pessoa concluir que o sistema falhou.
+			if incomingOfferOutcome(txtid, t.CallID) == incomingOfferTaken {
+				s.Respond(w, r, http.StatusConflict, errors.New("call was already answered"))
+				return
+			}
 			s.Respond(w, r, http.StatusNotFound, errors.New("call not found"))
 			return
 		}
@@ -196,10 +228,28 @@ func (s *server) AnswerCall() http.HandlerFunc {
 			return
 		}
 
+		// Os demais atendentes param de tocar. O motivo é ANSWERED_ELSEWHERE, e não um
+		// erro: para eles, a chamada teve o desfecho normal de ter sido atendida (FR-023,
+		// FR-024, US4-AS3).
+		publishIncomingCleared(txtid, t.CallID, incomingClearedAnswered)
+
+		// Chamada ao vivo: a voz do atendente vira a fonte de áudio, e a do contato passa a
+		// chegar ao navegador dele. Falhar aqui não desfaz o atendimento — a ligação já está
+		// estabelecida, e derrubá-la agora seria pior do que um silêncio diagnosticável.
+		if t.AgentID != "" {
+			if err := attachAgentToCall(txtid, t.AgentID, lc); err != nil {
+				log.Error().Err(err).
+					Str("instanceID", txtid).
+					Str("call_id", t.CallID).
+					Msg("Softphone agent could not be attached to the call it answered")
+			}
+		}
+
 		log.Info().
 			Str("instanceID", txtid).
 			Str("call_id", t.CallID).
 			Bool("record", t.Record).
+			Bool("live", t.AgentID != "").
 			Msg("Call answered")
 
 		// Peer travels back so the platform's record is born with the real contact

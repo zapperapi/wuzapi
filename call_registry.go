@@ -103,6 +103,25 @@ func (c *liveCall) play(src meowcaller.AudioSource, cleanup func()) (time.Time, 
 	return time.Now(), nil
 }
 
+// receive attaches a sink for the contact's voice.
+//
+// Feature 021: a live call has two consumers of the same voice -- the browser session and,
+// when recording was granted, the recorder. meowcaller's Call.Receive REPLACES the sink
+// instead of fanning out, so the tee lives here: the recorder keeps its slot and the extra
+// consumer is layered on top of it, never in place of it.
+func (c *liveCall) receive(sink meowcaller.AudioSink) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.call == nil {
+		return
+	}
+	if c.recorder != nil {
+		c.call.Receive(c.recorder.TeeSink(sink))
+		return
+	}
+	c.call.Receive(sink)
+}
+
 // playbackFinished releases the media of a playback that ended on its own.
 //
 // The identity check matters: a replaced playback can report finishing after its
@@ -233,11 +252,21 @@ func (r *callRegistry) claim(instanceID string, direction CallDirection, peer st
 // call that never happened.
 func (r *callRegistry) bind(instanceID, callID string, call *meowcaller.Call) {
 	r.mu.Lock()
-	defer r.mu.Unlock()
 	if lc := r.calls[instanceID]; lc != nil {
 		lc.CallID = callID
 		lc.call = call
 	}
+	r.mu.Unlock()
+
+	// Feature 021: a linha passa a aparecer ocupada nos componentes conectados (FR-033).
+	//
+	// Aqui, e não no `claim`, porque é aqui que o callID existe — e a indicação de linha
+	// ocupada sem o identificador da chamada não serviria ao atendente nem ao suporte.
+	//
+	// **Fora do lock**, sem `defer`: escrever em N sockets pode bloquear, e segurar o mutex
+	// que arbitra a vaga enquanto isso faria uma chamada nova esperar um navegador lento
+	// terminar de ler.
+	publishLineState(instanceID)
 }
 
 // adopt registers an inbound call the platform is about to answer, claiming the seat

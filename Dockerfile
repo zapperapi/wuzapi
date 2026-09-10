@@ -6,10 +6,14 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 # Install build dependencies
+# libopus-dev: transcodificacao Opus da perna do navegador (feature 021, research R3).
+# A perna do WhatsApp e MLow, em Go puro; a do navegador e Opus, e nao existe codificador
+# Opus maduro em Go puro. CGO ja esta habilitado abaixo.
 RUN apt-get update && apt-get install -y --no-install-recommends \
     gcc \
     g++ \
     pkg-config \
+    libopus-dev \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
@@ -36,6 +40,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     openssl \
     curl \
     ffmpeg \
+    libopus0 \
     tzdata \
     && rm -rf /var/lib/apt/lists/*
 

@@ -22,6 +22,11 @@ jobs:
         go-version: '1.25.0'
         cache: true
 
+    # libopus: dependência nativa da transcodificação da perna do navegador (feature 021).
+    # O build usa CGO, então a CI precisa dos cabeçalhos como o Dockerfile precisa.
+    - name: Install native dependencies
+      run: sudo apt-get update && sudo apt-get install -y --no-install-recommends libopus-dev
+
     - name: Download dependencies
       run: go mod download
 
@@ -41,6 +46,13 @@ jobs:
 
     - name: Run go vet
       run: go vet ./...
+
+    # A feature 021 depende de teste de concorrência em Go para provar SC-008 (exatamente uma
+    # chamada vence a disputa pela linha) e SC-009 (exatamente um atendente conduz uma chamada
+    # entrante). Sem este passo, as duas garantias só valeriam na máquina de quem lembrou de
+    # rodar os testes. `-race` existe porque o que se testa aqui é justamente corrida.
+    - name: Run tests
+      run: go test -race ./...
 
     - name: Build application
       run: go build -v -o wuzapi

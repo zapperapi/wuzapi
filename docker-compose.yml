@@ -5,8 +5,17 @@ services:
       dockerfile: Dockerfile
     ports:
       - "${WUZAPI_PORT:-8080}:8080"
+      # Mídia do softphone (feature 021). Uma porta UDP muxada para todas as sessões, e uma
+      # porta TCP como rota de fuga para redes que bloqueiam UDP. Ver DEPLOY_SOFTPHONE.md.
+      - "${SOFTPHONE_MEDIA_UDP_PORT:-3478}:3478/udp"
+      - "${SOFTPHONE_MEDIA_TCP_PORT:-3479}:3479/tcp"
     environment:
       - WUZAPI_ADMIN_TOKEN=${WUZAPI_ADMIN_TOKEN}
+      - SOFTPHONE_TOKEN_SECRET=${SOFTPHONE_TOKEN_SECRET:-}
+      - SOFTPHONE_ALLOWED_ORIGINS=${SOFTPHONE_ALLOWED_ORIGINS:-}
+      - SOFTPHONE_PUBLIC_IP=${SOFTPHONE_PUBLIC_IP:-127.0.0.1}
+      - SOFTPHONE_MEDIA_UDP_PORT=${SOFTPHONE_MEDIA_UDP_PORT:-3478}
+      - SOFTPHONE_MEDIA_TCP_PORT=${SOFTPHONE_MEDIA_TCP_PORT:-3479}
       - WUZAPI_GLOBAL_ENCRYPTION_KEY=${WUZAPI_GLOBAL_ENCRYPTION_KEY}
       - WUZAPI_GLOBAL_HMAC_KEY=${WUZAPI_GLOBAL_HMAC_KEY:-}
       - WUZAPI_GLOBAL_WEBHOOK=${WUZAPI_GLOBAL_WEBHOOK:-}
