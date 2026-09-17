@@ -45,6 +45,23 @@ type softphoneFrame struct {
 	D  json.RawMessage `json:"d,omitempty"`
 }
 
+// softphoneIdentity carrega os dois identificadores desta sessão, que não são o mesmo
+// valor e não são intercambiáveis.
+//
+// A credencial do atendente fala o identificador da **plataforma** (claim `iid`), que neste
+// servidor é o *token* do usuário. A memória deste processo — clientes conectados, motor de
+// chamadas e registro de sessões — é indexada pelo `users.id`, aleatório e gerado no
+// cadastro. Confundir os dois faz a sessão procurar a instância por uma chave que nunca
+// existe, que foi o defeito que este tipo elimina.
+type softphoneIdentity struct {
+	// instanceID é o da plataforma: serve ao log e à renovação de credencial, que confronta
+	// claim com claim.
+	instanceID string
+	// userID é a chave de tudo que vive em memória, a mesma que `handlers_call.go` e
+	// `call_engine.go` usam para escrever.
+	userID string
+}
+
 type sessionOpenData struct {
 	Token string `json:"token"`
 }
@@ -88,7 +105,7 @@ func (s *server) serveSoftphoneSession(ctx context.Context, conn *websocket.Conn
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
-	session, instanceID, err := s.authenticateSoftphone(ctx, conn, origin)
+	session, id, err := s.authenticateSoftphone(ctx, conn, origin)
 	if err != nil {
 		return
 	}
@@ -104,10 +121,10 @@ func (s *server) serveSoftphoneSession(ctx context.Context, conn *websocket.Conn
 		// reconexão negocia uma nova. A ponte de áudio, essa sim, sobrevive — é o que
 		// permite retomar a mesma chamada (research §R4).
 		session.closeMediaOnly()
-		beginGrace(session, func() { s.endCallForLostAgent(instanceID, session) })
+		beginGrace(session, func() { s.endCallForLostAgent(id.userID, session) })
 
 		log.Info().
-			Str("instanceID", instanceID).
+			Str("instanceID", id.instanceID).
 			Str("agentID", session.agent.ID).
 			Str("state", session.State().String()).
 			Msg("Softphone connection closed")
@@ -118,7 +135,7 @@ func (s *server) serveSoftphoneSession(ctx context.Context, conn *websocket.Conn
 		if err != nil {
 			return
 		}
-		if !s.dispatchSoftphoneFrame(ctx, conn, session, instanceID, frame) {
+		if !s.dispatchSoftphoneFrame(ctx, conn, session, id, frame) {
 			return
 		}
 	}
@@ -129,26 +146,26 @@ func (s *server) authenticateSoftphone(
 	ctx context.Context,
 	conn *websocket.Conn,
 	origin string,
-) (*agentSession, string, error) {
+) (*agentSession, softphoneIdentity, error) {
 	authCtx, cancel := context.WithTimeout(ctx, softphoneAuthDeadline)
 	defer cancel()
 
 	frame, err := readSoftphoneFrame(authCtx, conn)
 	if err != nil {
 		_ = conn.Close(websocket.StatusPolicyViolation, "session.open expected")
-		return nil, "", err
+		return nil, softphoneIdentity{}, err
 	}
 	if frame.T != "session.open" {
 		writeSoftphoneError(ctx, conn, frame.ID, "AGENT_TOKEN_INVALID", "credencial inválida")
 		_ = conn.Close(websocket.StatusPolicyViolation, "session.open expected")
-		return nil, "", errors.New("softphone: first frame was not session.open")
+		return nil, softphoneIdentity{}, errors.New("softphone: first frame was not session.open")
 	}
 
 	var data sessionOpenData
 	if err := json.Unmarshal(frame.D, &data); err != nil {
 		writeSoftphoneError(ctx, conn, frame.ID, "AGENT_TOKEN_INVALID", "credencial inválida")
 		_ = conn.Close(websocket.StatusPolicyViolation, "malformed session.open")
-		return nil, "", err
+		return nil, softphoneIdentity{}, err
 	}
 
 	agent, instanceID, err := parseAgentToken(data.Token)
@@ -162,7 +179,7 @@ func (s *server) authenticateSoftphone(
 		log.Warn().Err(err).Msg("Softphone credential refused")
 		writeSoftphoneError(ctx, conn, frame.ID, code, "credencial inválida")
 		_ = conn.Close(websocket.StatusPolicyViolation, "invalid credential")
-		return nil, "", err
+		return nil, softphoneIdentity{}, err
 	}
 
 	// A origem do handshake precisa bater com a que o manager estampou na credencial
@@ -173,27 +190,41 @@ func (s *server) authenticateSoftphone(
 			Msg("Softphone credential presented from an unexpected origin")
 		writeSoftphoneError(ctx, conn, frame.ID, "AGENT_TOKEN_INVALID", "credencial inválida")
 		_ = conn.Close(websocket.StatusPolicyViolation, "unexpected origin")
-		return nil, "", errAgentTokenInvalid
+		return nil, softphoneIdentity{}, errAgentTokenInvalid
 	}
 
 	// A instância precisa existir **neste** servidor e ter sessão ativa no WhatsApp
 	// (FR-002). Uma credencial legítima apresentada ao servidor errado morre aqui.
-	if _, err := s.resolveCallEngine(instanceID); err != nil {
+	//
+	// A tradução token -> `users.id` vem antes da busca, e não é detalhe: a credencial fala
+	// o identificador da plataforma, enquanto o mapa de clientes é indexado pelo id interno
+	// deste servidor. Todo o resto do wuzapi já faz essa resolução no middleware HTTP; esta
+	// rota fica fora da cadeia `authalice`, então faz aqui — uma vez, e o id resolvido é o
+	// que vale para o registro e para o motor daqui em diante.
+	//
+	// As duas falhas respondem igual de propósito: instância desconhecida neste servidor e
+	// instância sem sessão são, para quem está do outro lado, a mesma indisponibilidade.
+	userID, err := s.userIDForInstanceToken(instanceID)
+	if err == nil {
+		_, err = s.resolveCallEngine(userID)
+	}
+	if err != nil {
 		log.Warn().Str("instanceID", instanceID).Err(err).
 			Msg("Softphone session refused: instance unavailable on this server")
 		writeSoftphoneError(ctx, conn, frame.ID, "INSTANCE_NOT_CONNECTED",
 			"a instância não tem sessão ativa no WhatsApp")
 		_ = conn.Close(websocket.StatusPolicyViolation, "instance unavailable")
-		return nil, "", err
+		return nil, softphoneIdentity{}, err
 	}
+	identity := softphoneIdentity{instanceID: instanceID, userID: userID}
 
 	// Retomar vem antes de abrir: uma sessão em período de graça guarda a ponte de áudio e a
 	// chamada em curso, e abrir uma nova no lugar dela daria ao atendente um objeto vazio
 	// enquanto o contato continuaria ouvindo silêncio até o fim (FR-038).
-	resumed := GetSoftphoneRegistry().resume(instanceID, agent.ID)
+	resumed := GetSoftphoneRegistry().resume(identity.userID, agent.ID)
 	session := resumed
 	if session == nil {
-		session = GetSoftphoneRegistry().open(instanceID, agent)
+		session = GetSoftphoneRegistry().open(identity.userID, agent)
 	}
 
 	session.attach(func(frame any) {
@@ -209,7 +240,7 @@ func (s *server) authenticateSoftphone(
 
 	ready := map[string]any{
 		"agent":        softphoneAgentPayload(agent),
-		"line":         lineStatePayload(instanceID),
+		"line":         lineStatePayload(identity.userID),
 		"graceSeconds": int(softphoneGracePeriod / time.Second),
 	}
 	// Retomada dentro do prazo: o componente precisa saber que voltou para **a mesma**
@@ -226,7 +257,7 @@ func (s *server) authenticateSoftphone(
 		"d":  ready,
 	})
 
-	return session, instanceID, nil
+	return session, identity, nil
 }
 
 // dispatchSoftphoneFrame trata um quadro do cliente. Devolve false para encerrar a conexão.
@@ -234,7 +265,7 @@ func (s *server) dispatchSoftphoneFrame(
 	ctx context.Context,
 	conn *websocket.Conn,
 	session *agentSession,
-	instanceID string,
+	id softphoneIdentity,
 	frame softphoneFrame,
 ) bool {
 	switch frame.T {
@@ -250,8 +281,8 @@ func (s *server) dispatchSoftphoneFrame(
 		agent, tokenInstance, err := parseAgentToken(data.Token)
 		// Renovação que falha **não** derruba a conversa em curso (FR-010): a chamada segue,
 		// e apenas as operações seguintes ficam bloqueadas até uma credencial válida chegar.
-		if err != nil || tokenInstance != instanceID || agent.ID != session.agent.ID {
-			log.Warn().Str("instanceID", instanceID).Err(err).
+		if err != nil || tokenInstance != id.instanceID || agent.ID != session.agent.ID {
+			log.Warn().Str("instanceID", id.instanceID).Err(err).
 				Msg("Softphone credential refresh refused; existing session kept")
 			writeSoftphoneError(ctx, conn, frame.ID, "AGENT_TOKEN_INVALID", "credencial inválida")
 			return true
@@ -261,7 +292,7 @@ func (s *server) dispatchSoftphoneFrame(
 			"id": frame.ID,
 			"d": map[string]any{
 				"agent":        softphoneAgentPayload(agent),
-				"line":         lineStatePayload(instanceID),
+				"line":         lineStatePayload(id.userID),
 				"graceSeconds": int(softphoneGracePeriod / time.Second),
 			},
 		})
@@ -275,7 +306,7 @@ func (s *server) dispatchSoftphoneFrame(
 		}
 		media, answer, err := newSoftphoneMedia(data.SDP, session.Bridge())
 		if err != nil {
-			log.Error().Err(err).Str("instanceID", instanceID).
+			log.Error().Err(err).Str("instanceID", id.instanceID).
 				Msg("Softphone media negotiation failed")
 			writeSoftphoneError(ctx, conn, frame.ID, "MEDIA_NEGOTIATION_FAILED",
 				"não foi possível estabelecer o áudio")
@@ -311,7 +342,7 @@ func (s *server) dispatchSoftphoneFrame(
 		bridge.SetMuted(muted)
 
 		log.Info().
-			Str("instanceID", instanceID).
+			Str("instanceID", id.instanceID).
 			Str("agentID", session.agent.ID).
 			Str("call_id", session.ConductingCall()).
 			Bool("muted", muted).
@@ -341,6 +372,27 @@ func softphoneAgentPayload(agent agentIdentity) map[string]any {
 		payload["displayName"] = agent.DisplayName
 	}
 	return payload
+}
+
+// userIDForInstanceToken traduz o token da instância — o que a credencial carrega na claim
+// `iid` — no `users.id` deste servidor, que é a chave de tudo que vive em memória.
+//
+// O cache é lido, nunca escrito: quem o povoa é o middleware HTTP, com o registro completo
+// do usuário, e gravar daqui uma entrada com apenas o `Id` a serviria truncada às
+// requisições seguintes.
+func (s *server) userIDForInstanceToken(token string) (string, error) {
+	if cached, found := userinfocache.Get(token); found {
+		if values, ok := cached.(Values); ok {
+			if id := values.Get("Id"); id != "" {
+				return id, nil
+			}
+		}
+	}
+	var id string
+	if err := s.db.Get(&id, "SELECT id FROM users WHERE token=$1 LIMIT 1", token); err != nil {
+		return "", err
+	}
+	return id, nil
 }
 
 func readSoftphoneFrame(ctx context.Context, conn *websocket.Conn) (softphoneFrame, error) {
