@@ -1,6 +1,7 @@
 package main
 
 import (
+	"net"
 	"os"
 	"strconv"
 
@@ -38,6 +39,29 @@ type softphoneConfig struct {
 
 	mediaUDPPort int
 	mediaTCPPort int
+
+	// mediaSubnet restringe a mídia a uma única interface, pela sub-rede dela.
+	//
+	// Um contêiner em Swarm é multi-homed: uma perna na overlay, por onde ele fala com o
+	// banco, e outra na `docker_gwbridge`, por onde entra o tráfego publicado em
+	// `mode: host`. Sem restrição, o agente ICE coleta e liga nas duas, e nada garante que
+	// a sessão viva na mesma interface por onde o navegador chega — quando não vive, as
+	// verificações de conectividade são descartadas sem resposta e o ICE nunca fecha.
+	//
+	// Por sub-rede, e não por IP ou nome de interface, porque é o único dos três que
+	// sobrevive à recriação do contêiner: o IP muda e o nome depende da ordem em que as
+	// redes são anexadas.
+	//
+	// Nulo significa "todas as interfaces", que é o certo para instalação de nó único.
+	mediaSubnet *net.IPNet
+}
+
+// allowsMediaIP responde se um endereço local pode carregar mídia.
+func (c softphoneConfig) allowsMediaIP(ip net.IP) bool {
+	if c.mediaSubnet == nil {
+		return true
+	}
+	return c.mediaSubnet.Contains(ip)
 }
 
 var softphone softphoneConfig
@@ -65,16 +89,23 @@ func loadSoftphoneConfig() {
 		publicIP:     os.Getenv("SOFTPHONE_PUBLIC_IP"),
 		mediaUDPPort: envPort("SOFTPHONE_MEDIA_UDP_PORT", defaultSoftphoneMediaUDPPort),
 		mediaTCPPort: envPort("SOFTPHONE_MEDIA_TCP_PORT", defaultSoftphoneMediaTCPPort),
+		mediaSubnet:  envSubnet("SOFTPHONE_MEDIA_SUBNET"),
 	}
 
 	if softphone.publicIP == "" {
 		log.Warn().Msg("SOFTPHONE_PUBLIC_IP not set, media will advertise the container address and will not reach browsers outside the host")
 	}
 
+	subnet := "todas as interfaces"
+	if softphone.mediaSubnet != nil {
+		subnet = softphone.mediaSubnet.String()
+	}
+
 	log.Info().
 		Int("media_udp_port", softphone.mediaUDPPort).
 		Int("media_tcp_port", softphone.mediaTCPPort).
 		Str("public_ip", softphone.publicIP).
+		Str("media_subnet", subnet).
 		Msg("Softphone configured")
 }
 
@@ -91,4 +122,24 @@ func envPort(name string, fallback int) int {
 		return fallback
 	}
 	return port
+}
+
+// envSubnet lê uma sub-rede CIDR do ambiente.
+//
+// Valor inválido **não** derruba a mídia: cai em "todas as interfaces", que é o
+// comportamento de antes desta opção existir. Um erro de digitação aqui viraria chamada
+// muda em todas as instâncias do servidor, e chamada muda é o sintoma mais caro de
+// diagnosticar desta feature — o log avisa, a mídia continua de pé.
+func envSubnet(name string) *net.IPNet {
+	raw := os.Getenv(name)
+	if raw == "" {
+		return nil
+	}
+	_, subnet, err := net.ParseCIDR(raw)
+	if err != nil {
+		log.Warn().Str("variable", name).Str("value", raw).
+			Msg("Invalid CIDR in environment, media will use every interface")
+		return nil
+	}
+	return subnet
 }

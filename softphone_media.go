@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/pion/ice/v4"
+	"github.com/pion/logging"
 	"github.com/pion/webrtc/v4"
 	"github.com/pion/webrtc/v4/pkg/media"
 	"github.com/rs/zerolog/log"
@@ -94,12 +95,34 @@ func softphoneMediaAPI() (*webrtc.API, error) {
 
 		settings := webrtc.SettingEngine{}
 
-		udpMux, err := ice.NewMultiUDPMuxFromPort(softphone.mediaUDPPort)
+		// Respeita PION_LOG_ICE=trace e afins, para que o próximo problema de mídia se
+		// diagnostique por variável de ambiente em vez de captura de pacotes.
+		settings.LoggerFactory = logging.NewDefaultLoggerFactory()
+
+		// O mesmo filtro nos dois lugares, e isso não é redundância: o mux decide em que
+		// endereços liga, o SettingEngine decide de quais endereços o agente coleta
+		// candidatos. Divergirem é justamente o estado que deixa a sessão registrada numa
+		// interface enquanto o navegador chega por outra — pacote entregue pelo kernel e
+		// descartado pelo pion, sem resposta e sem log.
+		settings.SetIPFilter(softphone.allowsMediaIP)
+
+		udpMux, err := ice.NewMultiUDPMuxFromPort(
+			softphone.mediaUDPPort,
+			ice.UDPMuxFromPortWithIPFilter(softphone.allowsMediaIP),
+		)
 		if err != nil {
 			mediaAPIErr = fmt.Errorf("softphone: udp mux on port %d: %w", softphone.mediaUDPPort, err)
 			return
 		}
 		settings.SetICEUDPMux(udpMux)
+
+		// Sem declarar os tipos TCP, o pion coleta apenas candidatos UDP e o `SetICETCPMux`
+		// abaixo nunca chega a ser anunciado — a rota de fuga existiria no servidor e não
+		// no SDP, que é onde ela precisa aparecer.
+		settings.SetNetworkTypes([]webrtc.NetworkType{
+			webrtc.NetworkTypeUDP4, webrtc.NetworkTypeUDP6,
+			webrtc.NetworkTypeTCP4, webrtc.NetworkTypeTCP6,
+		})
 
 		// ICE-TCP na porta única. Falhar aqui não impede a mídia: só remove a rota de fuga.
 		if listener, err := net.ListenTCP("tcp", &net.TCPAddr{Port: softphone.mediaTCPPort}); err == nil {
