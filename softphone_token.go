@@ -40,6 +40,11 @@ type agentIdentity struct {
 	DisplayName string
 	// JTI identifica a emissão no log, sem que o token precise ser registrado.
 	JTI string
+	// Origin é a origem do CRM do cliente, cadastrada no manager e estampada pelo emissor.
+	// Confrontada contra o cabeçalho `Origin` do handshake em `authenticateSoftphone` —
+	// a validação por lista global (`SOFTPHONE_ALLOWED_ORIGINS`) não serve a uma frota
+	// multi-tenant, onde cada instância neste mesmo servidor pode ter um CRM diferente.
+	Origin string
 }
 
 // agentTokenClaims espelha as reivindicações emitidas pelo manager.
@@ -47,6 +52,7 @@ type agentTokenClaims struct {
 	InstanceID string `json:"iid"`
 	Scope      string `json:"scope"`
 	Name       string `json:"name,omitempty"`
+	Origin     string `json:"origin"`
 	jwt.RegisteredClaims
 }
 
@@ -82,7 +88,7 @@ func parseAgentToken(raw string) (agentIdentity, string, error) {
 		return agentIdentity{}, "", errAgentTokenScope
 	}
 
-	if claims.Subject == "" || claims.InstanceID == "" {
+	if claims.Subject == "" || claims.InstanceID == "" || claims.Origin == "" {
 		return agentIdentity{}, "", errAgentTokenInvalid
 	}
 
@@ -90,5 +96,6 @@ func parseAgentToken(raw string) (agentIdentity, string, error) {
 		ID:          claims.Subject,
 		DisplayName: claims.Name,
 		JTI:         claims.ID,
+		Origin:      claims.Origin,
 	}, claims.InstanceID, nil
 }

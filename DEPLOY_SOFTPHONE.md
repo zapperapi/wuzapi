@@ -5,11 +5,39 @@ verificado ao escrever a T003 e a T004.
 
 ---
 
-## 1. WebSocket através do Traefik — **nenhum label novo é necessário**
+## 1. WebSocket através do Traefik — **router público dedicado, restrito ao path**
 
 Traefik encaminha `Upgrade: websocket` de forma transparente em qualquer router HTTP: o
 upgrade é parte do protocolo HTTP/1.1 e não exige middleware, entrypoint dedicado nem
-anotação. Os labels existentes do serviço já servem `wss://<Server.url>/softphone`.
+anotação própria para isso.
+
+O que **não** dá para reaproveitar são os labels que já existem no serviço: `Server.url` é o
+endereço interno, manager → wuzapi (Docker-internal, ex.: `http://api03:8080`), nunca
+alcançável por um navegador. O endereço que o navegador usa é `Server.publicUrl`
+(`resolveSoftphoneEndpoint`), e ele precisa de um router Traefik próprio, com `Host` público
+e **restrito por `PathPrefix`** a `/softphone` — nunca um router genérico em `Host(...)` sem
+prefixo, que exporia a API REST inteira daquele wuzapi (autenticada só pelo token por
+instância, que não é secreto: é o próprio `instanceId`, usado publicamente em outros lugares
+da plataforma):
+
+```yaml
+labels:
+  - traefik.enable=true
+  - traefik.http.routers.wuzapi-softphone-<server>.rule=Host(`<server>.zapperhub.com`) && PathPrefix(`/softphone`)
+  - traefik.http.routers.wuzapi-softphone-<server>.entrypoints=websecure
+  - traefik.http.routers.wuzapi-softphone-<server>.tls=true
+  - traefik.http.routers.wuzapi-softphone-<server>.tls.certresolver=certresolver
+  - traefik.http.services.wuzapi-<server>.loadbalancer.server.port=8080
+```
+
+Sem middleware de `stripprefix`: o handler espera receber `/softphone` literalmente
+(`routes.go`), então o `PathPrefix` aqui é só filtro, não reescrita.
+
+Como cada servidor da frota é um nó próprio (não um serviço que o Swarm pode realocar entre
+nós — as portas de mídia em `mode: host` já dependem disso), o serviço precisa de uma
+constraint de `placement` fixando-o nesse nó (ex.: `node.labels.server == <server>`), e o
+`Server.publicUrl`/DNS desse host devem apontar para um IP público **estável** (reservado no
+provedor de nuvem), não o IP efêmero padrão da VM.
 
 Duas condições continuam obrigatórias e são responsabilidade do ambiente:
 
@@ -20,23 +48,22 @@ Duas condições continuam obrigatórias e são responsabilidade do ambiente:
   entre chamadas; o `ping`/`pong` do protocolo existe para isso, mas um
   `respondingTimeouts.idleTimeout` agressivo no Traefik derruba a sessão antes.
 
-## 2. Origem cruzada — **não é CORS, é a checagem de `Origin`**
+## 2. Origem cruzada — **não é CORS, é a claim `origin` da credencial**
 
 Achado da T003: o `wuzapi` não emite nenhum cabeçalho `Access-Control-*` hoje, e **não
 precisa** emitir para o socket. Handshake de WebSocket não dispara preflight CORS; o navegador
 manda o cabeçalho `Origin` e cabe ao servidor aceitar ou recusar.
 
-Consequência prática: `websocket.Accept` do `coder/websocket` **recusa origem cruzada por
-padrão**. A página do CRM roda em outro domínio, então a lista de origens aceitas é
-configuração obrigatória, não opcional:
-
-```
-SOFTPHONE_ALLOWED_ORIGINS=https://crm.cliente.com,https://app.outrocliente.com.br
-```
-
-Vazio significa recusar toda origem cruzada — falha fechada, de propósito. Curinga (`*`) é
-aceito apenas para desenvolvimento local e **não** deve chegar a produção: quem controla a
-origem controla quem consegue abrir sessão com uma credencial vazada.
+Não existe mais uma variável de ambiente para isso (`SOFTPHONE_ALLOWED_ORIGINS` foi removida):
+um único wuzapi hospeda várias instâncias, cada uma com o CRM de um cliente diferente, então
+uma lista estática por servidor não tem como representar isso. `websocket.Accept` aceita
+qualquer origem no handshake (`InsecureSkipVerify`), e a validação de verdade acontece logo
+depois, em `authenticateSoftphone`: o cabeçalho `Origin` da conexão é comparado contra a claim
+`origin` da credencial — estampada pelo `zapperapi-manager` a partir de `Instance.softphoneOrigin`
+no momento em que a credencial é emitida. Sem essa origem cadastrada na instância, o manager
+recusa emitir a credencial (`503 PROVIDER_UNAVAILABLE`); com ela cadastrada mas incompatível
+com a página que abriu a conexão, o wuzapi recusa a sessão (`AGENT_TOKEN_INVALID`, a mesma
+resposta de token adulterado — FR-009, não revela qual das duas causas foi).
 
 ## 3. Mídia: uma porta UDP e uma porta TCP
 

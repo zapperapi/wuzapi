@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/coder/websocket"
@@ -63,11 +64,14 @@ func (s *server) SoftphoneWS() http.HandlerFunc {
 			return
 		}
 
+		// A validação de origem não acontece aqui: uma lista fixa por servidor não serve a
+		// uma frota multi-tenant, onde cada instância hospedada neste mesmo processo pode
+		// ter um CRM em um domínio diferente. `InsecureSkipVerify` aceita o handshake de
+		// qualquer origem, e `authenticateSoftphone` confere o cabeçalho `Origin` contra a
+		// claim que o manager estampou no token — a única fonte que sabe qual origem é
+		// esperada *para esta instância*.
 		conn, err := websocket.Accept(w, r, &websocket.AcceptOptions{
-			// Origem cruzada é a regra, não a exceção: a página é o CRM do cliente, em
-			// outro domínio. Sem esta lista, `Accept` recusa tudo — e é assim que deve
-			// falhar quando ninguém configurou nada.
-			OriginPatterns: softphone.allowedOrigins,
+			InsecureSkipVerify: true,
 		})
 		if err != nil {
 			log.Debug().Err(err).Msg("Softphone websocket handshake refused")
@@ -75,16 +79,16 @@ func (s *server) SoftphoneWS() http.HandlerFunc {
 		}
 		conn.SetReadLimit(softphoneReadLimit)
 
-		s.serveSoftphoneSession(r.Context(), conn)
+		s.serveSoftphoneSession(r.Context(), conn, r.Header.Get("Origin"))
 	}
 }
 
 // serveSoftphoneSession conduz uma conexão do handshake ao encerramento.
-func (s *server) serveSoftphoneSession(ctx context.Context, conn *websocket.Conn) {
+func (s *server) serveSoftphoneSession(ctx context.Context, conn *websocket.Conn, origin string) {
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
-	session, instanceID, err := s.authenticateSoftphone(ctx, conn)
+	session, instanceID, err := s.authenticateSoftphone(ctx, conn, origin)
 	if err != nil {
 		return
 	}
@@ -124,6 +128,7 @@ func (s *server) serveSoftphoneSession(ctx context.Context, conn *websocket.Conn
 func (s *server) authenticateSoftphone(
 	ctx context.Context,
 	conn *websocket.Conn,
+	origin string,
 ) (*agentSession, string, error) {
 	authCtx, cancel := context.WithTimeout(ctx, softphoneAuthDeadline)
 	defer cancel()
@@ -158,6 +163,17 @@ func (s *server) authenticateSoftphone(
 		writeSoftphoneError(ctx, conn, frame.ID, code, "credencial inválida")
 		_ = conn.Close(websocket.StatusPolicyViolation, "invalid credential")
 		return nil, "", err
+	}
+
+	// A origem do handshake precisa bater com a que o manager estampou na credencial
+	// (FR-009: uma única resposta para causas variadas — aqui não é diferente de token
+	// adulterado, então usa o mesmo código, sem revelar qual das duas falhou).
+	if !strings.EqualFold(origin, agent.Origin) {
+		log.Warn().Str("instanceID", instanceID).Str("origin", origin).
+			Msg("Softphone credential presented from an unexpected origin")
+		writeSoftphoneError(ctx, conn, frame.ID, "AGENT_TOKEN_INVALID", "credencial inválida")
+		_ = conn.Close(websocket.StatusPolicyViolation, "unexpected origin")
+		return nil, "", errAgentTokenInvalid
 	}
 
 	// A instância precisa existir **neste** servidor e ter sessão ativa no WhatsApp
