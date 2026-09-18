@@ -305,11 +305,13 @@ func (m *softphoneMedia) OnStateChange(fn func(webrtc.PeerConnectionState)) {
 }
 
 // Close encerra a sessão de mídia. Seguro chamar mais de uma vez.
+//
+// **Não toca na ponte, de propósito.** A ponte pertence à sessão e é compartilhada por todas
+// as mídias dela; desarmá-la aqui deixava muda a mídia corrente sempre que outra era
+// fechada — uma antiga, ou uma recém-criada que falhou na negociação e se fecha nos próprios
+// caminhos de erro. Quem arma e desarma a ponte é `agentSession`, que é a dona dela.
 func (m *softphoneMedia) Close() {
 	m.closeOnce.Do(func() {
-		if m.bridge != nil {
-			m.bridge.SetPeerSink(nil)
-		}
 		m.encMu.Lock()
 		if m.encoder != nil {
 			m.encoder.Close()

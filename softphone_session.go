@@ -391,12 +391,18 @@ func (s *agentSession) setMedia(m *softphoneMedia) {
 // contato ouvindo silêncio até o fim mesmo que o atendente voltasse.
 func (s *agentSession) closeMediaOnly() {
 	s.mu.Lock()
-	m := s.media
+	m, bridge := s.media, s.bridge
 	s.media = nil
 	s.mu.Unlock()
 
 	if m != nil {
 		m.Close()
+	}
+	// Desarmar é responsabilidade de quem é dono da ponte, e é aqui — não no `Close` da
+	// mídia, que não tem como saber se a ponte ainda aponta para ela. Sem destino vivo, o
+	// áudio do contato é descartado até a renegociação, que é o que FR-037 descreve.
+	if bridge != nil {
+		bridge.SetPeerSink(nil)
 	}
 }
 
