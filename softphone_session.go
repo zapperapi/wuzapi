@@ -372,8 +372,15 @@ func (s *agentSession) setMedia(m *softphoneMedia) {
 	s.media = m
 	s.mu.Unlock()
 
+	// Fechar a anterior **antes** de armar a nova, e nesta ordem: `Close` desarma o caminho
+	// de volta da ponte, então armar primeiro seria armar para ser desarmado em seguida.
+	// Concentrar as duas coisas aqui é o que torna a ordem verificável — espalhadas entre o
+	// construtor da mídia e este método, elas se desfaziam mutuamente em silêncio.
 	if previous != nil {
 		previous.Close()
+	}
+	if m != nil && s.bridge != nil {
+		s.bridge.SetPeerSink(m.sendToBrowser)
 	}
 }
 

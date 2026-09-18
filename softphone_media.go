@@ -223,9 +223,9 @@ func newSoftphoneMedia(offerSDP string, bridge *liveAudioBridge) (*softphoneMedi
 		return nil, "", errors.New("softphone: no local description after gathering")
 	}
 
-	// A voz do contato passa a ser codificada e enviada ao navegador.
-	bridge.SetPeerSink(session.sendToBrowser)
-
+	// Quem arma o caminho de volta na ponte é `agentSession.setMedia`, e não este
+	// construtor. Armar aqui punha a mídia nova na ponte **antes** de a anterior ser
+	// fechada, e o `Close` da anterior desarmava o que a nova tinha acabado de instalar.
 	return session, local.SDP, nil
 }
 
