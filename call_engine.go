@@ -1,11 +1,14 @@
 package main
 
 import (
+	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"time"
 
 	"wuzapi/internal/meowcaller"
+	"wuzapi/internal/meowcaller/diag"
 
 	whatsmeow "github.com/polymorfa/hypermeow"
 	"github.com/rs/zerolog/log"
@@ -102,13 +105,43 @@ type callEngine struct {
 //
 // Must run BEFORE the whatsmeow client connects -- meowcaller refuses to install its
 // node interception on a client whose receive loop is already running.
+// newSoftphoneDiagRecorder liga o gravador de diagnóstico do meowcaller.
+//
+// O engine já emite eventos por pacote — RTP de entrada, autenticação SRTP, áudio decodificado
+// com RMS —, mas o destino sempre foi um `*diag.Recorder` nulo, e `Emit` em gravador nulo é
+// no-op. Sem isso, "a mídia do contato não chega" e "chega e é descartada" produzem
+// exatamente o mesmo log: nenhum.
+//
+// Desligado por padrão, e deliberadamente: a gravação é por pacote de áudio e cresce rápido.
+// `SOFTPHONE_DIAG_DIR` liga, e é para usar durante uma investigação, não em regime.
+//
+// Um subdiretório por instância porque um processo hospeda várias, e capturas embaralhadas
+// não servem para comparar uma chamada boa com uma ruim.
+func newSoftphoneDiagRecorder(baseDir, instanceID string) *diag.Recorder {
+	if baseDir == "" {
+		return nil
+	}
+	rec, err := diag.NewRecorder(filepath.Join(baseDir, instanceID))
+	if err != nil {
+		// Diagnóstico não pode derrubar chamada: falhar aqui apenas devolve o comportamento
+		// de antes desta opção existir.
+		log.Warn().Err(err).Str("dir", baseDir).Msg("Softphone diagnostics disabled")
+		return nil
+	}
+	log.Info().Str("dir", filepath.Join(baseDir, instanceID)).Msg("Softphone diagnostics recording")
+	return rec
+}
+
 func newCallEngine(instanceID string, wa *whatsmeow.Client, emit func(map[string]interface{})) *callEngine {
 	e := &callEngine{instanceID: instanceID, emit: emit, pending: make(map[string]*meowcaller.Call)}
-	e.client = meowcaller.NewClient(
-		wa,
+	opts := []meowcaller.Option{
 		meowcaller.WithLogger(log.With().Str("instanceID", instanceID).Logger()),
 		meowcaller.WithTypedCallAcks(false),
-	)
+	}
+	if rec := newSoftphoneDiagRecorder(os.Getenv("SOFTPHONE_DIAG_DIR"), instanceID); rec != nil {
+		opts = append(opts, meowcaller.WithDiagnostics(rec))
+	}
+	e.client = meowcaller.NewClient(wa, opts...)
 	e.client.OnIncomingCall(e.onIncomingCall)
 	return e
 }

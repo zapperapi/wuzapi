@@ -111,36 +111,7 @@ func (e *engine) maybeStartMedia(callID string) {
 // the channel and the allocate bytes (re-sent by the keepalive).
 //
 // NOT VALIDATED: live-relay only.
-// buildCallAllocate monta o STUN allocate desta chamada.
-//
-// Com o par identificado no `<relay>`, o allocate carrega as assinaturas dos fluxos dele —
-// é o que instrui o relay a encaminhar a mídia do contato para este endpoint. Sem elas o
-// relay responde aos pings e não envia áudio algum, que é indistinguível de "o contato está
-// calado" em qualquer camada acima.
-//
-// Sem pid de par, nada muda: segue o allocate que só declara os nossos streams.
-func buildCallAllocate(
-	transactionID [12]byte,
-	relayToken []byte,
-	endpointXor [6]byte,
-	streamSsrcs [9]uint32,
-	appDataSSRC uint32,
-	rd *relayData,
-	log ...zerolog.Logger,
-) []byte {
-	if rd.hasPeerPID {
-		return stun.BuildWasmStunAllocateRequestWithGroupSubscriptions(
-			transactionID, relayToken, endpointXor,
-			streamSsrcs, appDataSSRC, []uint32{rd.peerPID},
-			rd.relayKeyASCII, log...,
-		)
-	}
-	return stun.BuildWasmStunAllocateRequestWithStreamSsrcs(
-		transactionID, relayToken, endpointXor, streamSsrcs, rd.relayKeyASCII, log...,
-	)
-}
-
-func (e *engine) connectAndAllocate(ctx context.Context, rd *relayData, streamSsrcs [9]uint32, appDataSSRC uint32, inbound bool) (*relay.RelayMediaChannel, []byte, error) {
+func (e *engine) connectAndAllocate(ctx context.Context, rd *relayData, streamSsrcs [9]uint32, inbound bool) (*relay.RelayMediaChannel, []byte, error) {
 	log := e.c.log
 	ep := getMediaRelayEndpoint(rd, inbound)
 	if ep == nil || len(ep.addresses) == 0 {
@@ -196,7 +167,7 @@ func (e *engine) connectAndAllocate(ctx context.Context, rd *relayData, streamSs
 	}
 	var tx [12]byte
 	_, _ = rand.Read(tx[:])
-	allocate := buildCallAllocate(tx, rd.relayTokens[ep.tokenID], endpointXor, streamSsrcs, appDataSSRC, rd, log)
+	allocate := stun.BuildWasmStunAllocateRequestWithStreamSsrcs(tx, rd.relayTokens[ep.tokenID], endpointXor, streamSsrcs, rd.relayKeyASCII, log)
 	if _, err := ch.Send(allocate); err != nil {
 		ch.Close()
 		return nil, nil, fmt.Errorf("allocate send: %w", err)
@@ -249,7 +220,7 @@ func (e *engine) runMedia(ctx context.Context, callID string, call *Call, callKe
 	if err != nil {
 		return err
 	}
-	ch, allocate, err := e.connectAndAllocate(ctx, rd, streamSsrcs, appDataSelfSsrc, inbound)
+	ch, allocate, err := e.connectAndAllocate(ctx, rd, streamSsrcs, inbound)
 	if err != nil {
 		return err
 	}
