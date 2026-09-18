@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/pion/ice/v4"
@@ -70,6 +71,9 @@ type softphoneMedia struct {
 	encMu   sync.Mutex
 
 	bridge *liveAudioBridge
+
+	// noEncoderLogged garante uma linha por mídia quando o codificador já foi fechado.
+	noEncoderLogged atomic.Bool
 
 	closeOnce sync.Once
 }
@@ -273,6 +277,11 @@ func (m *softphoneMedia) sendToBrowser(frame []float32) {
 	m.encMu.Unlock()
 
 	if encoder == nil {
+		// O outro ponto cego: mídia já fechada enquanto a ponte ainda aponta para ela.
+		// Mesma disciplina de uma linha só, pelo mesmo motivo.
+		if m.noEncoderLogged.CompareAndSwap(false, true) {
+			log.Warn().Msg("Softphone media has no encoder; the contact's audio is being discarded")
+		}
 		return
 	}
 	if err != nil {

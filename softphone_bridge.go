@@ -4,6 +4,8 @@ import (
 	"io"
 	"sync"
 
+	"github.com/rs/zerolog/log"
+
 	"wuzapi/internal/meowcaller"
 )
 
@@ -54,6 +56,10 @@ type liveAudioBridge struct {
 	// peerSink recebe a voz do contato. Trocável a quente: é isso que permite reconectar
 	// sem derrubar a chamada, e é onde o tee da gravação se encaixa (research §R6).
 	peerSink func([]float32)
+
+	// droppedNoSink conta os quadros descartados por falta de destino. Existe para o log
+	// sair uma vez por ponte, e não por quadro.
+	droppedNoSink int
 
 	// silence é devolvido no esvaziamento. Um único buffer compartilhado porque ninguém o
 	// escreve — o laço de mídia só o lê para codificar.
@@ -132,11 +138,23 @@ func (b *liveAudioBridge) PushMic(samples []float32) {
 func (b *liveAudioBridge) WriteFrame(frame []float32) error {
 	b.mu.Lock()
 	sink := b.peerSink
+	dropped := b.droppedNoSink
+	if sink == nil {
+		b.droppedNoSink++
+	}
 	b.mu.Unlock()
 
-	if sink != nil {
-		sink(frame)
+	if sink == nil {
+		// Um dos dois pontos cegos do caminho de volta: sem destino, a voz do contato é
+		// descartada sem deixar rastro, e "não tem áudio" fica indistinguível de "o contato
+		// está calado". Registra só a primeira, para não inundar o log a 16 quadros por
+		// segundo — a existência da linha é o diagnóstico, não a contagem.
+		if dropped == 0 {
+			log.Warn().Msg("Softphone bridge has no peer sink; the contact's audio is being discarded")
+		}
+		return nil
 	}
+	sink(frame)
 	return nil
 }
 
