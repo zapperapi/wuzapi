@@ -512,7 +512,7 @@ func (e *engine) placeCall(ctx context.Context, target string, opts CallOptions)
 // preparation step, independent of the later Answer/Reject), and fires the
 // OnIncomingCall listener. Only the <accept> is deferred to Answer.
 func (e *engine) onOffer(ev *events.CallOffer) {
-	// Source of truth: https://github.com/purpshell/meowcaller/blob/33854919e64bdd4b053054ac9764d8fc63027b57/datasheets/voip-group-invite-accept.md#L28-L40
+	// Source of truth: https://wuzapi/internal/meowcaller/blob/33854919e64bdd4b053054ac9764d8fc63027b57/datasheets/voip-group-invite-accept.md#L28-L40
 	groupSnapshot, isGroup, groupErr := signaling.ParseGroupInviteSnapshot(ev.Data)
 	if groupErr != nil {
 		e.c.log.Warn().Err(groupErr).Str("call_id", ev.CallID).Msg("parse inbound group offer failed")
@@ -599,7 +599,7 @@ func (e *engine) onOffer(ev *events.CallOffer) {
 }
 
 func (e *engine) onGroupOffer(ev *events.CallOffer, update groupCallUpdate) {
-	// Source of truth: https://github.com/purpshell/meowcaller/blob/33854919e64bdd4b053054ac9764d8fc63027b57/datasheets/voip-group-invite-accept.md#L28-L40
+	// Source of truth: https://wuzapi/internal/meowcaller/blob/33854919e64bdd4b053054ac9764d8fc63027b57/datasheets/voip-group-invite-accept.md#L28-L40
 	peer := ev.CallCreator
 	if peer.IsEmpty() {
 		peer = ev.From
@@ -673,7 +673,7 @@ func (e *engine) answer(c *Call) error {
 		return fmt.Errorf("meowcaller: unknown call %s", c.id)
 	}
 	if m.group {
-		// Source of truth: https://github.com/purpshell/meowcaller/blob/676ebee3eca513b5348fab36cae5c560cc791238/datasheets/voip-group-invite-accept.md#L26-L45
+		// Source of truth: https://wuzapi/internal/meowcaller/blob/676ebee3eca513b5348fab36cae5c560cc791238/datasheets/voip-group-invite-accept.md#L26-L45
 		accept, err := signaling.BuildActiveGroupAccept(c.id, m.creator, e.nextCallNodeID())
 		if err != nil {
 			return err
@@ -801,6 +801,22 @@ func (e *engine) onRelayLatency(ev *events.CallRelayLatency) {
 	if rl == nil {
 		return
 	}
+	// Only endorse relays we can actually receive on. The caller's probes
+	// routinely include its own nearest edge, which is absent from the offer
+	// and holds no tokens for us; echoing that entry back tells the caller both
+	// sides reach it, the election picks it, and the caller's media moves to a
+	// relay we were never connected to.
+	e.mu.Lock()
+	offered := map[string]bool{}
+	if m.relay != nil {
+		for i := range m.relay.endpoints {
+			if name := m.relay.endpoints[i].relayName; name != "" {
+				offered[name] = true
+			}
+		}
+	}
+	e.mu.Unlock()
+
 	var probes []rlProbe
 	for i := range rl.GetChildren() {
 		te := &rl.GetChildren()[i]
@@ -808,9 +824,14 @@ func (e *engine) onRelayLatency(ev *events.CallRelayLatency) {
 			continue
 		}
 		ag := te.AttrGetter()
+		name := ag.String("relay_name")
+		if len(offered) > 0 && !offered[name] {
+			e.c.log.Debug().Str("call_id", ev.CallID).Str("relay_name", name).Msg("skipping latency response for relay outside the offer")
+			continue
+		}
 		probes = append(probes, rlProbe{
 			latency:   decodeLatency(ag.String("latency")),
-			relayName: ag.String("relay_name"),
+			relayName: name,
 			addr:      nodeBytes(te),
 		})
 	}
@@ -869,7 +890,7 @@ func (e *engine) onAccept(ev *events.CallAccept) {
 		return
 	}
 	if m.group {
-		// Source of truth: https://github.com/purpshell/meowcaller/blob/676ebee3eca513b5348fab36cae5c560cc791238/datasheets/voip-group-invite-accept.md#L26-L45
+		// Source of truth: https://wuzapi/internal/meowcaller/blob/676ebee3eca513b5348fab36cae5c560cc791238/datasheets/voip-group-invite-accept.md#L26-L45
 		if m.call != nil && m.call.State() < CallPhaseConnecting {
 			m.call.setPhase(CallPhaseConnecting)
 		}
@@ -925,7 +946,7 @@ func (e *engine) onAccept(ev *events.CallAccept) {
 }
 
 func inviteDeviceCapability(device types.JID, node *waBinary.Node) (groupCallDevice, bool) {
-	// Source of truth: https://github.com/purpshell/meowcaller/blob/1ebd064663ac336ff3d1fc65d9baa974148fe73e/datasheets/voip-group-participant-invite.md#L36-L72
+	// Source of truth: https://wuzapi/internal/meowcaller/blob/1ebd064663ac336ff3d1fc65d9baa974148fe73e/datasheets/voip-group-participant-invite.md#L36-L72
 	if device.IsEmpty() {
 		return groupCallDevice{}, false
 	}
@@ -1027,7 +1048,7 @@ func (e *engine) onCallAck(ack *waBinary.Node) {
 		return
 	}
 	if isGroup {
-		// Source of truth: https://github.com/purpshell/meowcaller/blob/7cb6045001dafd2514f53e85cd8c3e419c13adbe/datasheets/voip-initial-group-call.md#L27-L33
+		// Source of truth: https://wuzapi/internal/meowcaller/blob/7cb6045001dafd2514f53e85cd8c3e419c13adbe/datasheets/voip-initial-group-call.md#L27-L33
 		e.applyGroupUpdate(groupCallUpdateFromSignaling(*groupUpdate))
 		return
 	}
@@ -1061,7 +1082,7 @@ func (e *engine) onCallRaw(callNode *waBinary.Node) bool {
 	}
 	switch kids[0].Tag {
 	case "group_update", "enc_rekey", "waiting_room_update", "user_action", "screen_share":
-		// Source of truth: https://github.com/purpshell/meowcaller/blob/36d54857c74e45ccb08f6444a32d2afa13f20be9/datasheets/group-video-reactions.md#L31-L56
+		// Source of truth: https://wuzapi/internal/meowcaller/blob/36d54857c74e45ccb08f6444a32d2afa13f20be9/datasheets/group-video-reactions.md#L31-L56
 		if !e.typedCallAcksEnabled() {
 			// Fork patch 3: hypermeow already acked this <call> node.
 			e.onUnknownCallEvent(callNode)

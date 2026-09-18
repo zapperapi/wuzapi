@@ -122,3 +122,38 @@ mão passariam a exercitar silenciosamente o caminho do fork — foi o que quebr
    semântica, e só eles exigem leitura.
 5. Atualizar o commit de origem e a data no topo deste arquivo.
 6. `go build ./... && go vet ./... && go test ./...` em `wuzapi/`.
+
+## Patch 4 — cherry-pick do PR #26 do upstream (bind em todos os relays)
+
+**Arquivos**: `engine.go`, `engine_media.go`, `engine_relay_fanout.go` (novo)
+**Origem**: `purpshell/meowcaller` PR #26, commit `340c889422`, **ainda aberto** em 2026-09-18
+
+Corrige o defeito que deixava o atendente surdo: a saída funcionava, a entrada nunca chegava,
+e o `rtp.jsonl` do diagnóstico sequer era criado — nenhum pacote de entrada classificado como
+RTP, com STUN e SRTCP saudáveis.
+
+**Causa**, nas palavras do autor do PR: telefones rodam eleição de relay do lado do cliente
+logo após o accept e migram a mídia para o relay que mediram mais próximo. O
+`getMediaRelayEndpoint` escolhe por heurística estática e acerta por sorte; errando, o relay
+aceita a conexão, responde aos pings e nunca entrega mídia. Clientes Web não migram
+(`enable_web_relay_connection_stagger`), e é por isso que ligar em um relay só parecia
+funcionar quando testado a partir do Web.
+
+**Correção**: conectar e alocar em **todos** os relays oferecidos numa chamada 1:1, transmitir
+por broadcast, unir as recepções atrás de um filtro de repetição por `(SSRC, seq)` — com
+bind-to-all o mesmo pacote chega uma vez por relay, e timestamp duplicado reinicia o buffer de
+playout —, reenviar a cada relay o **seu** allocate no keepalive (os tokens são específicos por
+relay e não podem ser broadcast), e responder sondas de `relaylatency` apenas para relays
+presentes na oferta. Chamadas de grupo mantêm a semântica de relay único via `PrimarySend`.
+
+**Só o primeiro commit do PR foi trazido.** Os outros três (toggles de vídeo, orientação CVO,
+ofertas velhas da fila offline) não têm relação com este defeito.
+
+**Ao ressincronizar:** se o PR #26 tiver sido aceito lá em cima, este patch some — vem no
+próprio upstream. Se ainda estiver aberto, reaplicar o `340c889422` e rodar o Patch 1 nos três
+arquivos, porque o arquivo novo chega com os imports do upstream.
+
+**Validação:** não há vetores KAT para o salto do relay ao vivo (limitação que a documentação
+do próprio repositório reconhece), então isto está na mesma classe de validação do resto do
+código de relay — suíte completa verde, e a prova real é uma chamada com áudio nos dois
+sentidos.
