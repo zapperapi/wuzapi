@@ -122,3 +122,31 @@ mão passariam a exercitar silenciosamente o caminho do fork — foi o que quebr
    semântica, e só eles exigem leitura.
 5. Atualizar o commit de origem e a data no topo deste arquivo.
 6. `go build ./... && go vet ./... && go test ./...` em `wuzapi/`.
+
+## Patch 4 — assinatura dos fluxos do par na chamada 1:1
+
+**Hipótese em teste, não correção confirmada.** Em produção o relay respondia aos pings e
+nunca encaminhava a mídia do contato: nenhum pacote com tamanho de áudio chegava ao nó, e o
+`first RTP-classified packet from relay` nunca disparava. O atendente falava e era ouvido; o
+contato falava e não era.
+
+O `<relay>` de uma chamada 1:1 nomeia o par com um pid (`peer_pid="1"` ao lado de
+`self_pid="2"`, com o `<participant pid="1" jid="…"/>` correspondente), igual ao que faz numa
+chamada de grupo. O upstream usa esse número apenas para localizar o JID do par em
+`parseRelayData` e o descarta; o allocate da 1:1 sai por
+`BuildWasmStunAllocateRequestWithStreamSsrcs`, declarando só os nossos nove streams, enquanto
+`BuildWasmStunAllocateRequestWithGroupSubscriptions` — que assina os fluxos de um participante
+— só é usado no caminho de grupo.
+
+Este patch guarda `peerPID`/`hasPeerPID` no `relayData` e faz o allocate da 1:1 assinar o par
+quando ele está identificado (`buildCallAllocate`, `engine_media.go`). `hasPeerPID` existe
+porque **pid 0 é válido** — ofertas reais trazem `<participant pid="0">`, então ausência não
+pode ser inferida do valor.
+
+Sem pid de par o allocate é byte a byte o de antes, e há teste fixando isso
+(`relay_subscription_test.go`), para que o caminho da `020` não mude por tabela.
+
+**O que ainda não está provado:** em pelo menos uma chamada observada o áudio do contato
+chegou sem esta assinatura, então ela não pode ser condição estritamente necessária. Se o
+sintoma persistir com o patch aplicado, a causa é outra e este patch deve ser revisto — não
+mantido por inércia.

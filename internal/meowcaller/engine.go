@@ -1613,6 +1613,15 @@ type relayData struct {
 	relayTokens   [][]byte // indexed <token id=…>
 	endpoints     []relayEndpoint
 	peerJID       types.JID
+
+	// peerPID is the relay's participant id for the peer, from <relay peer_pid=…>. It is
+	// what the allocate subscribes to so the relay forwards the peer's streams to us;
+	// without it the relay keeps the path alive with pings and sends no media.
+	//
+	// hasPeerPID exists because 0 is a legitimate pid — real offers carry
+	// <participant pid="0">, so absence cannot be inferred from the value.
+	peerPID    uint32
+	hasPeerPID bool
 }
 
 func nodeBytes(n *waBinary.Node) []byte {
@@ -1729,6 +1738,9 @@ func parseRelayData(node *waBinary.Node) *relayData {
 		child := &kids[i]
 		if child.Tag == "participant" && peerPID != "" && child.AttrGetter().String("pid") == peerPID {
 			rd.peerJID = child.AttrGetter().JID("jid")
+			if pid, err := strconv.ParseUint(peerPID, 10, 32); err == nil {
+				rd.peerPID, rd.hasPeerPID = uint32(pid), true
+			}
 			continue
 		}
 		if child.Tag != "te2" {
