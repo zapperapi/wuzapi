@@ -1,8 +1,11 @@
 package main
 
 import (
+	"fmt"
 	"sync"
 	"time"
+
+	"github.com/rs/zerolog/log"
 )
 
 // Registro das sessões de softphone (feature 021, research §R9).
@@ -381,6 +384,15 @@ func (s *agentSession) setMedia(m *softphoneMedia) {
 	}
 	if m != nil && s.bridge != nil {
 		s.bridge.SetPeerSink(m.sendToBrowser)
+		// O endereço da ponte entra no log de propósito: é o que permite cruzar este
+		// armamento com o descarte do outro lado. Se os dois citarem pontes diferentes,
+		// existem duas sessões para o mesmo atendente e o problema é de registro, não de
+		// mídia.
+		log.Info().
+			Str("instanceID", s.instanceID).
+			Str("agentID", s.agent.ID).
+			Str("bridge", fmt.Sprintf("%p", s.bridge)).
+			Msg("Softphone bridge armed for the browser")
 	}
 }
 

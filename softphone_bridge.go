@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"io"
 	"sync"
 
@@ -150,7 +151,9 @@ func (b *liveAudioBridge) WriteFrame(frame []float32) error {
 		// está calado". Registra só a primeira, para não inundar o log a 16 quadros por
 		// segundo — a existência da linha é o diagnóstico, não a contagem.
 		if dropped == 0 {
-			log.Warn().Msg("Softphone bridge has no peer sink; the contact's audio is being discarded")
+			log.Warn().
+				Str("bridge", fmt.Sprintf("%p", b)).
+				Msg("Softphone bridge has no peer sink; the contact's audio is being discarded")
 		}
 		return nil
 	}
