@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"io"
+	"runtime/debug"
 	"sync"
 
 	"github.com/rs/zerolog/log"
@@ -183,6 +184,15 @@ func (b *liveAudioBridge) Muted() bool {
 
 // SetPeerSink aponta a voz do contato para um destino. Nil a descarta.
 func (b *liveAudioBridge) SetPeerSink(sink func([]float32)) {
+	if sink == nil {
+		// Desarmar é legítimo — conexão caindo, sessão morrendo —, mas o log mostrou um
+		// desarme que nenhum caminho conhecido explica. O rastro nomeia o responsável em
+		// vez de deixar a dedução por conta de quem lê. Só no caso nulo: armar é rotina.
+		log.Warn().
+			Str("bridge", fmt.Sprintf("%p", b)).
+			Str("stack", string(debug.Stack())).
+			Msg("Softphone bridge peer sink cleared")
+	}
 	b.mu.Lock()
 	b.peerSink = sink
 	b.mu.Unlock()
