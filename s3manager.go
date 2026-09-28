@@ -30,6 +30,26 @@ type S3Config struct {
 	RetentionDays int
 }
 
+// LogFields returns a representation of the S3 config safe for logging: it omits
+// AccessKey and SecretKey, which are credentials and MUST NOT reach any log, at any
+// level, per the ZapperHub constitution (Principle VI) and feature 023-storage-r2
+// (FR-013a). Callers MUST use this instead of logging the struct directly.
+func (c *S3Config) LogFields() map[string]interface{} {
+	if c == nil {
+		return nil
+	}
+	return map[string]interface{}{
+		"enabled":        c.Enabled,
+		"endpoint":       c.Endpoint,
+		"region":         c.Region,
+		"bucket":         c.Bucket,
+		"path_style":     c.PathStyle,
+		"public_url":     c.PublicURL,
+		"media_delivery": c.MediaDelivery,
+		"retention_days": c.RetentionDays,
+	}
+}
+
 // S3Manager manages S3 operations
 type S3Manager struct {
 	mu      sync.RWMutex

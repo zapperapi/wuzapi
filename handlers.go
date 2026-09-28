@@ -5593,8 +5593,18 @@ func (s *server) AddUser() http.HandlerFunc {
 			return
 		}
 
-		log.Info().Interface("proxyConfig", user.ProxyConfig).Interface("s3Config", user.S3Config).Msg("Received values for proxyConfig and s3Config")
-		log.Debug().Interface("user", user).Msg("Received values for user")
+		// FR-013a / Principle VI (023-storage-r2): the raw S3Config carries SecretKey and
+		// AccessKey in clear text. LogFields() strips both; the previous Interface() call
+		// logged them at Info level on every user creation and edit. Token and HmacKey are
+		// credentials too, so the Debug line below no longer dumps the raw user struct.
+		log.Info().Interface("proxyConfig", user.ProxyConfig).Interface("s3Config", user.S3Config.LogFields()).Msg("Received values for proxyConfig and s3Config")
+		log.Debug().
+			Str("name", user.Name).
+			Str("webhook", user.Webhook).
+			Int("expiration", user.Expiration).
+			Str("events", user.Events).
+			Int("history", user.History).
+			Msg("Received values for user")
 
 		// Set defaults only if nil
 		if user.Events == "" {
@@ -5781,8 +5791,18 @@ func (s *server) EditUser() http.HandlerFunc {
 			return
 		}
 
-		log.Info().Interface("proxyConfig", user.ProxyConfig).Interface("s3Config", user.S3Config).Msg("Received values for proxyConfig and s3Config")
-		log.Debug().Interface("user", user).Msg("Received values for user")
+		// FR-013a / Principle VI (023-storage-r2): the raw S3Config carries SecretKey and
+		// AccessKey in clear text. LogFields() strips both; the previous Interface() call
+		// logged them at Info level on every user creation and edit. Token and HmacKey are
+		// credentials too, so the Debug line below no longer dumps the raw user struct.
+		log.Info().Interface("proxyConfig", user.ProxyConfig).Interface("s3Config", user.S3Config.LogFields()).Msg("Received values for proxyConfig and s3Config")
+		log.Debug().
+			Str("name", user.Name).
+			Str("webhook", user.Webhook).
+			Int("expiration", user.Expiration).
+			Str("events", user.Events).
+			Int("history", user.History).
+			Msg("Received values for user")
 
 		// Check if user exists
 		var count int
