@@ -38,6 +38,7 @@ import (
 	"github.com/PuerkitoBio/goquery"
 	"github.com/jmoiron/sqlx"
 	"github.com/nfnt/resize"
+	"github.com/polymorfa/hypermeow/types"
 	"github.com/rs/zerolog/log"
 	"github.com/vincent-petithory/dataurl"
 )
@@ -284,6 +285,17 @@ func updateUserInfo(values interface{}, field string, value string) interface{} 
 	}
 	m[field] = value
 	return Values{m: m}
+}
+
+// statusJID picks the jid reported by /session/status. The device store is the
+// source of truth once logged in; the cached Jid can go stale (e.g. a request
+// that read the DB before PairSuccess writes its snapshot back to the cache
+// afterwards), so it is only a fallback.
+func statusJID(cached string, storeID *types.JID) string {
+	if storeID != nil && !storeID.IsEmpty() {
+		return storeID.String()
+	}
+	return cached
 }
 
 // webhookLogUserName returns users.name for webhook error logs; falls back to payload instanceName.

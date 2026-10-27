@@ -767,6 +767,7 @@ func (s *server) GetStatus() http.HandlerFunc {
 		isLoggedIn := false
 		displayName := ""
 		profilePictureURL := ""
+		jid := userInfo.Get("Jid")
 
 		if waClient != nil {
 			isConnected = waClient.IsConnected()
@@ -774,6 +775,7 @@ func (s *server) GetStatus() http.HandlerFunc {
 
 			if isLoggedIn && waClient.Store != nil && waClient.Store.ID != nil {
 				displayName = waClient.Store.PushName
+				jid = statusJID(jid, waClient.Store.ID)
 
 				ownJID := waClient.Store.ID.ToNonAD()
 				pic, picErr := waClient.GetProfilePictureInfo(context.Background(), ownJID, &whatsmeow.GetProfilePictureParams{})
@@ -846,7 +848,7 @@ func (s *server) GetStatus() http.HandlerFunc {
 			"connected":           isConnected,
 			"loggedIn":            isLoggedIn,
 			"token":               userInfo.Get("Token"),
-			"jid":                 userInfo.Get("Jid"),
+			"jid":                 jid,
 			"webhook":             userInfo.Get("Webhook"),
 			"events":              userInfo.Get("Events"),
 			"proxy_url":           userInfo.Get("Proxy"),
