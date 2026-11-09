@@ -1716,6 +1716,41 @@ paths:
             application/json:
               schema:
                 example: {"code":200,"data":{"Details":"Sent","Id":"90B2F8B13FAC8A9CF6B06E99C7834DC5","Timestamp":"2022-04-20T12:49:08-03:00"},"success":true}
+  /chat/send/pix:
+    post:
+      tags:
+        - Chat
+      summary: Sends a PIX payment message
+      description: |
+        Sends a PIX payment message (Brazil) as an interactive native flow message.
+
+        Three forms, chosen by `Mode` and `AmountValue`:
+
+        - `static` with `AmountValue` 0: key only, no amount (`payment_info`).
+        - `static` with `AmountValue` > 0: key and amount (`review_and_pay`).
+        - `dynamic`: "copia e cola" code and amount (`review_and_pay`).
+
+        The body is validated for presence and consistency only. The PIX code and key
+        formats are validated by the caller. The code and key are never written to logs.
+      security:
+        - ApiKeyAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/definitions/MessagePix'
+      responses:
+        200:
+          description: Response
+          content:
+            application/json:
+              schema:
+                example: {"code":200,"data":{"Details":"Sent","Id":"90B2F8B13FAC8A9CF6B06E99C7834DC5","Timestamp":1762600000},"success":true}
+        400:
+          description: Invalid body (missing field, invalid Mode or KeyType, Code on a static message, or no AmountValue on a dynamic one)
+        500:
+          description: No session, or the message could not be sent
   /chat/send/poll:
     post:
       tags:
@@ -2860,6 +2895,62 @@ definitions:
         type: string
         example: "3EB06F9067F80BAB89FF"
 
+  MessagePix:
+    type: object
+    description: "PIX payment message. AmountValue is in cents (BRL). Code is only accepted when Mode is dynamic."
+    required:
+      - Phone
+      - Body
+      - Mode
+      - Key
+      - KeyType
+      - MerchantName
+      - ReferenceId
+    properties:
+      Phone:
+        type: string
+        example: "5511999999999"
+      Id:
+        type: string
+        description: "Optional message id. Generated when omitted."
+      Body:
+        type: string
+        description: "Message text"
+        example: "Sua fatura de novembro"
+      Footer:
+        type: string
+        description: "Footer text (optional)"
+        example: "Vence em 10/11"
+      Mode:
+        type: string
+        enum: [dynamic, static]
+        description: "dynamic: code and amount required. static: key only, amount optional."
+        example: "dynamic"
+      AmountValue:
+        type: integer
+        format: int64
+        minimum: 0
+        description: "Amount in cents. Required and greater than zero when Mode is dynamic."
+        example: 15050
+      Code:
+        type: string
+        description: "PIX \"copia e cola\" code (BR Code). Required when Mode is dynamic; rejected when static."
+      Key:
+        type: string
+        description: "PIX key of the receiver"
+        example: "39580525000189"
+      KeyType:
+        type: string
+        enum: [CPF, CNPJ, EMAIL, PHONE, EVP]
+        example: "CNPJ"
+      MerchantName:
+        type: string
+        description: "Receiver name shown to the recipient"
+        example: "Loja Exemplo"
+      ReferenceId:
+        type: string
+        description: "Payment reference sent to the provider"
+        example: "fatura-123.k3j9x0a7qp"
   MessageList:
     type: object
     description: "Payload no formato Baileys. Aceita também ButtonText/Desc/TopText/FooterText/Sections/List para compatibilidade."

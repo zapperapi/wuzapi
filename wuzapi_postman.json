@@ -1024,6 +1024,27 @@
           "response": []
         },
         {
+          "name": "Send PIX",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "token", "value": "{{token}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"Phone\": \"5511999999999\",\n  \"Body\": \"Sua fatura de novembro\",\n  \"Mode\": \"static\",\n  \"AmountValue\": 0,\n  \"Key\": \"pagamentos@loja.com.br\",\n  \"KeyType\": \"EMAIL\",\n  \"MerchantName\": \"Loja Exemplo\",\n  \"ReferenceId\": \"fatura-123.k3j9x0a7qp\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/chat/send/pix",
+              "host": ["{{baseUrl}}"],
+              "path": ["chat", "send", "pix"]
+            },
+            "description": "Send a PIX payment message. Mode dynamic requires Code and AmountValue (cents); static takes the key only."
+          },
+          "response": []
+        },
+        {
           "name": "Send Poll",
           "request": {
             "method": "POST",
