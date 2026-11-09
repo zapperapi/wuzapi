@@ -20,6 +20,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 WORKDIR /app
 COPY go.mod go.sum ./
+# O `replace` do go.mod aponta para esta pasta; ela precisa existir antes do download.
+COPY third_party ./third_party
 RUN go mod download
 
 COPY . .

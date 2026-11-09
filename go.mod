@@ -88,3 +88,8 @@ require (
 	golang.org/x/sys v0.47.0 // indirect
 	rsc.io/qr v0.2.0 // indirect
 )
+
+// Cópia local do fork usado em produção (v0.0.0-20260811214557-f9db181f1dfa), com
+// os patches listados em third_party/hypermeow/WUZAPI_PATCHES.md. Remover quando
+// o fork incorporar os patches.
+replace github.com/polymorfa/hypermeow => ./third_party/hypermeow
