@@ -25,7 +25,6 @@ import (
 	"github.com/nfnt/resize"
 	"github.com/patrickmn/go-cache"
 	whatsmeow "github.com/polymorfa/hypermeow"
-	waBinary "github.com/polymorfa/hypermeow/binary"
 	"github.com/polymorfa/hypermeow/proto/waCommon"
 	"github.com/polymorfa/hypermeow/proto/waE2E"
 	"github.com/rs/zerolog/log"
@@ -2380,7 +2379,8 @@ func (s *server) SendButtons() http.HandlerFunc {
 			Footer: &waE2E.InteractiveMessage_Footer{Text: proto.String(t.Footer)},
 			InteractiveMessage: &waE2E.InteractiveMessage_NativeFlowMessage_{
 				NativeFlowMessage: &waE2E.InteractiveMessage_NativeFlowMessage{
-					Buttons: nativeFlowButtons,
+					Buttons:        nativeFlowButtons,
+					MessageVersion: proto.Int32(nativeFlowMessageVersion),
 				},
 			},
 		}
@@ -2388,25 +2388,11 @@ func (s *server) SendButtons() http.HandlerFunc {
 			interactiveMsg.Header = header
 		}
 
-		// additionalNodes no formato Baileys (native_flow)
-		buttonsAdditionalNodes := []waBinary.Node{
-			{
-				Tag:   "biz",
-				Attrs: waBinary.Attrs{},
-				Content: []waBinary.Node{
-					{
-						Tag:   "interactive",
-						Attrs: waBinary.Attrs{"v": "1", "type": "native_flow"},
-						Content: []waBinary.Node{
-							{Tag: "native_flow", Attrs: waBinary.Attrs{"v": "2", "name": "mixed"}},
-						},
-					},
-				},
-			},
-		}
+		// Sem AdditionalNodes: o hypermeow anexa o nó <biz> do native_flow. Com um nó manual
+		// a stanza saía com dois <biz>, e o servidor recusava com o erro 479.
 		resp, err := clientManager.GetWhatsmeowClient(txtid).SendMessage(context.Background(), recipient, &waE2E.Message{
 			InteractiveMessage: interactiveMsg,
-		}, whatsmeow.SendRequestExtra{ID: msgid, AdditionalNodes: &buttonsAdditionalNodes})
+		}, whatsmeow.SendRequestExtra{ID: msgid})
 		if err != nil {
 			s.Respond(w, r, http.StatusInternalServerError, errors.New(fmt.Sprintf("error sending message: %v", err)))
 			return
@@ -2550,77 +2536,19 @@ func (s *server) SendList() http.HandlerFunc {
 			msgid = clientManager.GetWhatsmeowClient(txtid).GenerateMessageID()
 		}
 
-		// O ListMessage legado é recusado pelo servidor com erro 405 (not-allowed):
-		// o WhatsApp só aceita lista pelo caminho interativo `native_flow`, com um
-		// único botão `single_select` carregando as seções no buttonParamsJson.
-		buttonParams, err := json.Marshal(map[string]interface{}{
-			"title":    buttonText,
-			"sections": sections,
-		})
-		if err != nil {
-			s.Respond(w, r, http.StatusInternalServerError, errors.New(fmt.Sprintf("could not encode list sections: %v", err)))
-			return
-		}
+		// A lista vai como ListMessage (listType SINGLE_SELECT), que é como o cliente oficial a
+		// representa. O caminho anterior, um native_flow com o botão `single_select`, não chega
+		// ao aparelho do destinatário. O ListMessage já foi recusado com o erro 405, mas a causa
+		// era o atributo type do nó <list>, que o hypermeow mandava como "single_select": o
+		// servidor aceita "product_list" (ver third_party/hypermeow/WUZAPI_PATCHES.md).
+		// Sem AdditionalNodes: o hypermeow anexa o nó <biz>.
+		msg := buildListMessage(title, description, buttonText, footer, sections)
 
-		interactiveMsg := &waE2E.InteractiveMessage{
-			Body: &waE2E.InteractiveMessage_Body{Text: proto.String(description)},
-			Header: &waE2E.InteractiveMessage_Header{
-				Title:              proto.String(title),
-				HasMediaAttachment: proto.Bool(false),
-			},
-			InteractiveMessage: &waE2E.InteractiveMessage_NativeFlowMessage_{
-				NativeFlowMessage: &waE2E.InteractiveMessage_NativeFlowMessage{
-					Buttons: []*waE2E.InteractiveMessage_NativeFlowMessage_NativeFlowButton{{
-						Name:             proto.String("single_select"),
-						ButtonParamsJSON: proto.String(string(buttonParams)),
-					}},
-				},
-			},
-		}
-		if footer != "" {
-			interactiveMsg.Footer = &waE2E.InteractiveMessage_Footer{Text: proto.String(footer)}
-		}
-
-		// O cliente do WhatsApp só renderiza o interactiveMessage quando ele vem
-		// embrulhado em viewOnceMessage e com messageContextInfo
-		// (deviceListMetadataVersion 2) na mensagem interna — é a receita usada pelo
-		// Baileys. Sem isso o servidor aceita a stanza (200 "Sent") mas o aparelho
-		// descarta a mensagem em silêncio.
-		msg := &waE2E.Message{
-			ViewOnceMessage: &waE2E.FutureProofMessage{
-				Message: &waE2E.Message{
-					MessageContextInfo: &waE2E.MessageContextInfo{
-						DeviceListMetadata:        &waE2E.DeviceListMetadata{},
-						DeviceListMetadataVersion: proto.Int32(2),
-					},
-					InteractiveMessage: interactiveMsg,
-				},
-			},
-		}
-
-		// O whatsmeow não anexa `biz` para InteractiveMessage (getButtonTypeFromMessage
-		// atravessa o viewOnceMessage mas só cobre buttons/list/interactive_response),
-		// então o nó vai manualmente aqui, igual ao SendButtons.
-		listAdditionalNodes := []waBinary.Node{
-			{
-				Tag:   "biz",
-				Attrs: waBinary.Attrs{},
-				Content: []waBinary.Node{
-					{
-						Tag:   "interactive",
-						Attrs: waBinary.Attrs{"v": "1", "type": "native_flow"},
-						Content: []waBinary.Node{
-							{Tag: "native_flow", Attrs: waBinary.Attrs{"v": "2", "name": "mixed"}},
-						},
-					},
-				},
-			},
-		}
 		resp, err := clientManager.GetWhatsmeowClient(txtid).SendMessage(
 			context.Background(),
 			recipient,
 			msg,
-			whatsmeow.SendRequestExtra{ID: msgid, AdditionalNodes: &listAdditionalNodes},
+			whatsmeow.SendRequestExtra{ID: msgid},
 		)
 		if err != nil {
 			s.Respond(w, r, http.StatusInternalServerError, errors.New(fmt.Sprintf("error sending message: %v", err)))

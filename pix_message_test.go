@@ -357,3 +357,29 @@ func TestSendPixEndpoint(t *testing.T) {
 		}
 	})
 }
+
+func TestBuildPixMessage_ViewOnceIsOffByDefault(t *testing.T) {
+	t.Setenv("WUZAPI_PIX_VIEW_ONCE", "")
+	msg, err := buildPixMessage(dynamicPixRequest())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if msg.ViewOnceMessage != nil || msg.InteractiveMessage == nil {
+		t.Errorf("por padrão a mensagem não leva embrulho viewOnce")
+	}
+}
+
+func TestBuildPixMessage_ViewOnceByEnv(t *testing.T) {
+	t.Setenv("WUZAPI_PIX_VIEW_ONCE", "true")
+	msg, err := buildPixMessage(dynamicPixRequest())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if msg.ViewOnceMessage == nil || msg.ViewOnceMessage.Message.GetInteractiveMessage() == nil {
+		t.Fatalf("WUZAPI_PIX_VIEW_ONCE=true deveria embrulhar em viewOnceMessage")
+	}
+	info := msg.ViewOnceMessage.Message.GetMessageContextInfo()
+	if info.GetDeviceListMetadataVersion() != 2 {
+		t.Errorf("DeviceListMetadataVersion = %d, esperado 2", info.GetDeviceListMetadataVersion())
+	}
+}

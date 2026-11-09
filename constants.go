@@ -97,3 +97,8 @@ func init() {
 func isValidEventType(eventType string) bool {
 	return eventTypeMap[eventType]
 }
+
+// nativeFlowMessageVersion é o messageVersion do NativeFlowMessage. O WhatsApp só exibe a
+// mensagem interativa se o campo existir e for no máximo 1 (isSupportedInteractiveMessageVersion,
+// no WhatsApp Web); sem ele, o cliente mostra o aviso de recurso só do celular.
+const nativeFlowMessageVersion = 1

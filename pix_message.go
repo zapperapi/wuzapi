@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"os"
 
 	whatsmeow "github.com/polymorfa/hypermeow"
 	"github.com/polymorfa/hypermeow/proto/waE2E"
@@ -36,16 +37,17 @@ const (
 	pixButtonReviewAndPay = "review_and_pay"
 
 	// Offset de 1000, o padrão do cliente oficial: value = centavos × 10.
-	pixAmountOffset      = 1000
-	pixCentsToMilli      = 10
-	pixNativeFlowVersion = 1
+	pixAmountOffset = 1000
+	pixCentsToMilli = 10
 )
 
 // pixWrapInViewOnce define se a mensagem vai embrulhada em viewOnceMessage com
 // messageContextInfo (receita usada pela lista). O cliente oficial envia sem o
-// embrulho. É a variação de controle do spike S1; o valor final segue o
-// resultado registrado em specs/029-botao-pix/spike-s1.md.
-const pixWrapInViewOnce = false
+// embrulho, e esse é o padrão. WUZAPI_PIX_VIEW_ONCE=true liga o embrulho, como
+// variação de controle do spike S1 (specs/029-botao-pix/spike-s1.md).
+func pixWrapInViewOnce() bool {
+	return os.Getenv("WUZAPI_PIX_VIEW_ONCE") == "true"
+}
 
 var pixKeyTypes = map[string]bool{
 	"CPF":   true,
@@ -200,7 +202,7 @@ func buildPixMessage(req pixRequest) (*waE2E.Message, error) {
 					Name:             proto.String(button),
 					ButtonParamsJSON: proto.String(paramsJSON),
 				}},
-				MessageVersion: proto.Int32(pixNativeFlowVersion),
+				MessageVersion: proto.Int32(nativeFlowMessageVersion),
 			},
 		},
 	}
@@ -208,7 +210,7 @@ func buildPixMessage(req pixRequest) (*waE2E.Message, error) {
 		interactive.Footer = &waE2E.InteractiveMessage_Footer{Text: proto.String(req.Footer)}
 	}
 
-	if pixWrapInViewOnce {
+	if pixWrapInViewOnce() {
 		return &waE2E.Message{
 			ViewOnceMessage: &waE2E.FutureProofMessage{
 				Message: &waE2E.Message{
