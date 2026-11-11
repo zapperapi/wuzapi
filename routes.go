@@ -62,6 +62,15 @@ func (s *server) routes() {
 	// Storage próprio do integrador (feature 028, US2): segundo slot de S3 por usuário.
 	adminRoutes.Handle("/users/{id}/custom-s3", s.SetCustomS3()).Methods("PUT")
 	adminRoutes.Handle("/users/{id}/custom-s3", s.DeleteCustomS3()).Methods("DELETE")
+	// Ligação da Cloud API pelo softphone (feature 028, US6): o manager fala com a Meta, e
+	// este servidor cria e mantém a perna de mídia.
+	adminRoutes.Handle("/cloud-calls/incoming", s.CloudCallIncoming()).Methods("POST")
+	adminRoutes.Handle("/cloud-calls/offer", s.CloudCallOffer()).Methods("POST")
+	adminRoutes.Handle("/cloud-calls/{callId}/cleared", s.CloudCallCleared()).Methods("POST")
+	adminRoutes.Handle("/cloud-calls/{legId}/remote-answer", s.CloudCallRemoteAnswer()).Methods("POST")
+	adminRoutes.Handle("/cloud-calls/{callId}/accept", s.CloudCallAccept()).Methods("POST")
+	adminRoutes.Handle("/cloud-calls/{callId}/established", s.CloudCallEstablished()).Methods("POST")
+	adminRoutes.Handle("/cloud-calls/{callId}/end", s.CloudCallEnd()).Methods("POST")
 
 	c := alice.New()
 	c = c.Append(s.authalice)

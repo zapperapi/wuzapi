@@ -19,6 +19,7 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"os"
 	"os/signal"
@@ -478,18 +479,30 @@ func listenForSDP(ctx context.Context, addr, wantType string) (string, string, e
 	found := make(chan result, 1)
 	server := &http.Server{Addr: addr, ReadHeaderTimeout: 5 * time.Second}
 	server.Handler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Verificação do webhook pela Meta: devolve o desafio. O corpo do pedido nunca é impresso.
+		if challenge := r.URL.Query().Get("hub.challenge"); r.Method == http.MethodGet && challenge != "" {
+			fmt.Printf("[http] GET %s: verificação do webhook respondida\n", r.URL.Path)
+			_, _ = io.WriteString(w, challenge)
+			return
+		}
 		body, _ := io.ReadAll(io.LimitReader(r.Body, 1024*1024))
 		w.WriteHeader(http.StatusOK)
 		sdp, callID, err := extractSDP(body, wantType)
 		if err != nil {
+			fmt.Printf("[http] %s %s (%d bytes) ignorado: %v\n", r.Method, r.URL.Path, len(body), err)
 			return
 		}
+		fmt.Printf("[http] %s %s (%d bytes): evento com SDP\n", r.Method, r.URL.Path, len(body))
 		select {
 		case found <- result{sdp, callID}:
 		default:
 		}
 	})
-	go func() { _ = server.ListenAndServe() }()
+	listener, err := net.Listen("tcp", addr)
+	if err != nil {
+		return "", "", fmt.Errorf("não foi possível escutar em %s: %w", addr, err)
+	}
+	go func() { _ = server.Serve(listener) }()
 	defer server.Close()
 	fmt.Printf("Escutando eventos em %s\n", addr)
 	select {

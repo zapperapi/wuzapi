@@ -109,3 +109,75 @@ func publishLineState(instanceID string) {
 		"d": lineStatePayload(instanceID),
 	})
 }
+
+// ---------- Cloud API (feature 028, US6) ----------
+
+// Motivos que só existem na Cloud API.
+const (
+	// incomingClearedFailed: o atendimento não pôde ser concluído e a ligação acabou.
+	incomingClearedFailed = "FAILED"
+)
+
+// publishCloudIncoming sinaliza a ligação recebida só aos atendentes livres (FR-028).
+//
+// No `device` todos os atendentes veem a oferta, porque a instância tem uma linha só. Na
+// Cloud API cada atendente tem a própria linha: quem já está em ligação não é chamado, e a
+// ligação nova toca para os demais.
+func publishCloudIncoming(instanceID, callID string, contact cloudContact, at time.Time) int {
+	frame := map[string]any{
+		"t": "call.incoming",
+		"d": map[string]any{
+			"callId":  callID,
+			"contact": contact.payload(),
+			"at":      at.UTC().Format(time.RFC3339),
+		},
+	}
+
+	signalled := 0
+	for _, session := range GetSoftphoneRegistry().sessions(instanceID) {
+		if !session.IsCloud() || session.State() != sessionStateConnected || session.ConductingCall() != "" {
+			continue
+		}
+		session.notify(frame)
+		signalled++
+	}
+
+	log.Info().
+		Str("instanceID", instanceID).
+		Str("call_id", callID).
+		Int("agents", signalled).
+		Msg("Incoming cloud call signalled to free softphone agents")
+	return signalled
+}
+
+// cloudLineStatePayload monta a linha de um atendente da Cloud API: ocupada só quando ele
+// conduz uma ligação.
+func cloudLineStatePayload(session *agentSession) map[string]any {
+	callID := session.ConductingCall()
+	if callID == "" {
+		return map[string]any{"busy": false}
+	}
+	return map[string]any{
+		"busy":   true,
+		"callId": callID,
+		"agent":  softphoneAgentPayload(session.Agent()),
+	}
+}
+
+// sessionLineState devolve a linha que uma sessão deve exibir, pelo tipo da instância.
+func sessionLineState(session *agentSession, instanceID string) map[string]any {
+	if session.IsCloud() {
+		return cloudLineStatePayload(session)
+	}
+	return lineStatePayload(instanceID)
+}
+
+// publishCloudLineState publica a linha de cada atendente da instância.
+func publishCloudLineState(instanceID string) {
+	for _, session := range GetSoftphoneRegistry().sessions(instanceID) {
+		if !session.IsCloud() {
+			continue
+		}
+		session.notify(map[string]any{"t": "line.update", "d": cloudLineStatePayload(session)})
+	}
+}

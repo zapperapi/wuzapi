@@ -95,6 +95,17 @@ type agentSession struct {
 
 	// graceTimer encerra a chamada se o atendente não voltar a tempo (FR-039).
 	graceTimer *time.Timer
+
+	// cloud marca a sessão de uma instância `cloud_api` (feature 028). Nela a linha é do
+	// atendente, e não da instância: cada atendente conduz a própria ligação (FR-028).
+	cloud bool
+}
+
+// IsCloud diz se a sessão é de uma instância `cloud_api`.
+func (s *agentSession) IsCloud() bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.cloud
 }
 
 // State devolve o estado corrente sob o lock da sessão.
@@ -191,12 +202,22 @@ func GetSoftphoneRegistry() *softphoneRegistry { return softphoneRegistryInstanc
 // mesma chamada e a ponte de áudio seria reapontada por quem chegasse por último, em
 // silêncio.
 func (r *softphoneRegistry) open(instanceID string, agent agentIdentity) *agentSession {
+	return r.openSession(instanceID, agent, false)
+}
+
+// openCloud abre a sessão de um atendente de instância `cloud_api` (feature 028).
+func (r *softphoneRegistry) openCloud(instanceID string, agent agentIdentity) *agentSession {
+	return r.openSession(instanceID, agent, true)
+}
+
+func (r *softphoneRegistry) openSession(instanceID string, agent agentIdentity, cloud bool) *agentSession {
 	session := &agentSession{
 		instanceID: instanceID,
 		agent:      agent,
 		openedAt:   time.Now(),
 		state:      sessionStateConnected,
 		bridge:     newLiveAudioBridge(),
+		cloud:      cloud,
 	}
 
 	r.mu.Lock()

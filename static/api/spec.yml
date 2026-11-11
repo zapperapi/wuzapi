@@ -314,6 +314,217 @@ paths:
             application/json:
               schema:
                 example: {"code":404,"error":"user not found","success":false}
+  /admin/cloud-calls/incoming:
+    post:
+      tags:
+        - Admin
+      summary: Signal an incoming Cloud API call to the free softphone agents
+      description: |
+        Feature 028. Sends `call.incoming` to the softphone sessions of a `cloud_api` instance that do not conduct a call. An agent in a call is not signalled. Called by the manager when Meta reports a `connect` for a user-initiated call.
+      security:
+        - AdminAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [instanceId, callId]
+              properties:
+                instanceId: { type: string, example: inst_abc }
+                callId: { type: string, example: "wacid.HBgN..." }
+                contact:
+                  $ref: '#/components/schemas/CloudCallContact'
+                at: { type: string, format: date-time }
+      responses:
+        204: { description: Signalled. Also returned when no agent is free. }
+        400: { $ref: '#/components/responses/CloudCallError' }
+        401: { description: Admin token missing or wrong. }
+  /admin/cloud-calls/offer:
+    post:
+      tags:
+        - Admin
+      summary: Reserve the agent and create the SDP offer for Meta
+      description: |
+        Feature 028. Reserves the agent's line, creates the media leg towards Meta and returns the SDP offer for the `connect` command. The business side is ICE-full and the DTLS client. Media is sent only after `established`.
+
+        Errors: `409 NO_AGENT_SESSION`, `409 AGENT_IN_CALL`, `429 CONCURRENCY_LIMIT` (ceiling `SOFTPHONE_CLOUD_MAX_CALLS_PER_INSTANCE`, default 50), `502 MEDIA_NEGOTIATION_FAILED`.
+      security:
+        - AdminAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [instanceId, agentId]
+              properties:
+                instanceId: { type: string }
+                agentId: { type: string, example: op-1 }
+                contact:
+                  $ref: '#/components/schemas/CloudCallContact'
+                record:
+                  type: boolean
+                  description: Recording granted by the quota. Both legs are recorded from `established`.
+      responses:
+        200:
+          description: Leg created.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  legId: { type: string, example: leg_3f2a9c0b7d1e4a5b6c7d8e9f }
+                  sdp: { type: string, description: SDP offer for Meta. Never logged. }
+        400: { $ref: '#/components/responses/CloudCallError' }
+        401: { description: Admin token missing or wrong. }
+        409: { $ref: '#/components/responses/CloudCallError' }
+        429: { $ref: '#/components/responses/CloudCallError' }
+        502: { $ref: '#/components/responses/CloudCallError' }
+  /admin/cloud-calls/{callId}/cleared:
+    post:
+      tags:
+        - Admin
+      summary: Stop signalling an incoming Cloud API call
+      description: Feature 028. Sends `call.incoming.cleared` to every softphone session of the instance.
+      security:
+        - AdminAuth: []
+      parameters:
+        - { name: callId, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [instanceId]
+              properties:
+                instanceId: { type: string }
+                reason:
+                  type: string
+                  enum: [ANSWERED_ELSEWHERE, REJECTED, ABANDONED, FAILED]
+      responses:
+        204: { description: Published. }
+        401: { description: Admin token missing or wrong. }
+  /admin/cloud-calls/{legId}/remote-answer:
+    post:
+      tags:
+        - Admin
+      summary: Apply Meta's SDP answer to an outgoing call
+      description: Feature 028. Binds the Meta `callId` to the leg and applies the answer that arrived in the `connect` webhook.
+      security:
+        - AdminAuth: []
+      parameters:
+        - { name: legId, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [instanceId, sdp]
+              properties:
+                instanceId: { type: string }
+                callId: { type: string }
+                sdp: { type: string }
+      responses:
+        204: { description: Applied. }
+        401: { description: Admin token missing or wrong. }
+        404: { $ref: '#/components/responses/CloudCallError' }
+        502: { $ref: '#/components/responses/CloudCallError' }
+  /admin/cloud-calls/{callId}/accept:
+    post:
+      tags:
+        - Admin
+      summary: Create the SDP answer for an incoming Cloud API call
+      description: |
+        Feature 028. Reserves the agent's line, creates the media leg from Meta's offer and returns the SDP answer for the `accept` command.
+
+        Errors: `409 NO_AGENT_SESSION`, `409 AGENT_IN_CALL`, `409 CALL_TAKEN`, `429 CONCURRENCY_LIMIT`, `502 MEDIA_NEGOTIATION_FAILED`.
+      security:
+        - AdminAuth: []
+      parameters:
+        - { name: callId, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [instanceId, agentId, sdp]
+              properties:
+                instanceId: { type: string }
+                agentId: { type: string }
+                sdp: { type: string, description: Meta's SDP offer. }
+                record: { type: boolean }
+                contact:
+                  $ref: '#/components/schemas/CloudCallContact'
+      responses:
+        200:
+          description: Answer created.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  sdp: { type: string, description: SDP answer for Meta. Never logged. }
+        400: { $ref: '#/components/responses/CloudCallError' }
+        401: { description: Admin token missing or wrong. }
+        409: { $ref: '#/components/responses/CloudCallError' }
+        429: { $ref: '#/components/responses/CloudCallError' }
+        502: { $ref: '#/components/responses/CloudCallError' }
+  /admin/cloud-calls/{callId}/established:
+    post:
+      tags:
+        - Admin
+      summary: Start sending media on a Cloud API call
+      description: Feature 028. Called after Meta confirms the call. Starts the media towards Meta and the granted recording. Idempotent. `callId` also accepts the `legId`.
+      security:
+        - AdminAuth: []
+      parameters:
+        - { name: callId, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [instanceId]
+              properties:
+                instanceId: { type: string }
+      responses:
+        204: { description: Established. }
+        401: { description: Admin token missing or wrong. }
+        404: { $ref: '#/components/responses/CloudCallError' }
+  /admin/cloud-calls/{callId}/end:
+    post:
+      tags:
+        - Admin
+      summary: End a Cloud API call leg
+      description: |
+        Feature 028. Closes the leg, frees the agent and publishes `call.state` `ENDED` to the agent. Delivers the recording through `CallRecordingReady` or `CallRecordingFailed`. Idempotent: an unknown or ended call returns 204. `callId` also accepts the `legId`.
+
+        When the media of a leg is lost, or the agent does not reconnect within the grace period, this server ends the leg itself and sends `CloudCallMediaLost` to the instance webhook, with `CallID`, `LegID`, `AgentID` and `Reason`.
+      security:
+        - AdminAuth: []
+      parameters:
+        - { name: callId, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [instanceId]
+              properties:
+                instanceId: { type: string }
+                reason:
+                  type: string
+                  description: Registered outcome, which becomes the `endedReason` of the softphone frame.
+                  enum: [COMPLETED, REJECTED, MISSED, UNAVAILABLE, TERMINATED_BY_BUSINESS, FAILED]
+      responses:
+        204: { description: Ended, or nothing to end. }
+        401: { description: Admin token missing or wrong. }
   /newsletter/list:
     get:
       tags:
@@ -3814,6 +4025,27 @@ components:
       type: apiKey
       in: header
       name: Authorization
+  schemas:
+    CloudCallContact:
+      type: object
+      description: Contact of a Cloud API call. Meta may omit the phone and send only the BSUID.
+      properties:
+        jid: { type: string, example: "5511999990000@s.whatsapp.net" }
+        bsuid: { type: string }
+        name: { type: string }
+  responses:
+    CloudCallError:
+      description: Error of a cloud call route, with a code for the manager.
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              code:
+                type: string
+                enum: [BAD_REQUEST, AGENT_IN_CALL, NO_AGENT_SESSION, CALL_TAKEN, CONCURRENCY_LIMIT, MEDIA_NEGOTIATION_FAILED, CALL_NOT_FOUND]
+              error: { type: string }
+              success: { type: boolean, example: false }
 
 security:
   - ApiKeyAuth: []

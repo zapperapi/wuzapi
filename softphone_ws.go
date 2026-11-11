@@ -121,7 +121,13 @@ func (s *server) serveSoftphoneSession(ctx context.Context, conn *websocket.Conn
 		// reconexão negocia uma nova. A ponte de áudio, essa sim, sobrevive — é o que
 		// permite retomar a mesma chamada (research §R4).
 		session.closeMediaOnly()
-		beginGrace(session, func() { s.endCallForLostAgent(id.userID, session) })
+		beginGrace(session, func() {
+			if session.IsCloud() {
+				s.cloudEngine().agentLost(id.userID, session)
+				return
+			}
+			s.endCallForLostAgent(id.userID, session)
+		})
 
 		log.Info().
 			Str("instanceID", id.instanceID).
@@ -204,9 +210,19 @@ func (s *server) authenticateSoftphone(
 	//
 	// As duas falhas respondem igual de propósito: instância desconhecida neste servidor e
 	// instância sem sessão são, para quem está do outro lado, a mesma indisponibilidade.
+	//
+	// Feature 028: a instância `cloud_api` não tem sessão de WhatsApp neste servidor — a
+	// ligação passa pela Meta, e daqui sai só a perna de mídia. Basta a instância existir
+	// aqui. A memória dessas sessões é indexada pelo identificador da plataforma, o mesmo
+	// que o manager usa nas rotas `/admin/cloud-calls/*`.
+	cloud := agent.InstanceType == instanceTypeCloudAPI
 	userID, err := s.userIDForInstanceToken(instanceID)
 	if err == nil {
-		_, err = s.resolveCallEngine(userID)
+		if cloud {
+			userID = instanceID
+		} else {
+			_, err = s.resolveCallEngine(userID)
+		}
 	}
 	if err != nil {
 		log.Warn().Str("instanceID", instanceID).Err(err).
@@ -224,7 +240,11 @@ func (s *server) authenticateSoftphone(
 	resumed := GetSoftphoneRegistry().resume(identity.userID, agent.ID)
 	session := resumed
 	if session == nil {
-		session = GetSoftphoneRegistry().open(identity.userID, agent)
+		if cloud {
+			session = GetSoftphoneRegistry().openCloud(identity.userID, agent)
+		} else {
+			session = GetSoftphoneRegistry().open(identity.userID, agent)
+		}
 	}
 
 	session.attach(func(frame any) {
@@ -240,7 +260,7 @@ func (s *server) authenticateSoftphone(
 
 	ready := map[string]any{
 		"agent":        softphoneAgentPayload(agent),
-		"line":         lineStatePayload(identity.userID),
+		"line":         sessionLineState(session, identity.userID),
 		"graceSeconds": int(softphoneGracePeriod / time.Second),
 	}
 	// Retomada dentro do prazo: o componente precisa saber que voltou para **a mesma**
@@ -292,7 +312,7 @@ func (s *server) dispatchSoftphoneFrame(
 			"id": frame.ID,
 			"d": map[string]any{
 				"agent":        softphoneAgentPayload(agent),
-				"line":         lineStatePayload(id.userID),
+				"line":         sessionLineState(session, id.userID),
 				"graceSeconds": int(softphoneGracePeriod / time.Second),
 			},
 		})

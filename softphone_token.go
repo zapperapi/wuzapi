@@ -45,7 +45,14 @@ type agentIdentity struct {
 	// a validação por lista global (`SOFTPHONE_ALLOWED_ORIGINS`) não serve a uma frota
 	// multi-tenant, onde cada instância neste mesmo servidor pode ter um CRM diferente.
 	Origin string
+	// InstanceType é o tipo da instância, da claim `itp` (feature 028). `cloud_api` abre a
+	// sessão sem exigir sessão de WhatsApp neste servidor; vazio é o `device`, como antes da
+	// claim existir.
+	InstanceType string
 }
+
+// instanceTypeCloudAPI é o valor da claim `itp` das instâncias da API oficial.
+const instanceTypeCloudAPI = "cloud_api"
 
 // agentTokenClaims espelha as reivindicações emitidas pelo manager.
 type agentTokenClaims struct {
@@ -53,6 +60,8 @@ type agentTokenClaims struct {
 	Scope      string `json:"scope"`
 	Name       string `json:"name,omitempty"`
 	Origin     string `json:"origin"`
+	// InstanceType é a claim `itp` (feature 028). Ausente nas credenciais do `device`.
+	InstanceType string `json:"itp,omitempty"`
 	jwt.RegisteredClaims
 }
 
@@ -93,9 +102,10 @@ func parseAgentToken(raw string) (agentIdentity, string, error) {
 	}
 
 	return agentIdentity{
-		ID:          claims.Subject,
-		DisplayName: claims.Name,
-		JTI:         claims.ID,
-		Origin:      claims.Origin,
+		ID:           claims.Subject,
+		DisplayName:  claims.Name,
+		JTI:          claims.ID,
+		Origin:       claims.Origin,
+		InstanceType: claims.InstanceType,
 	}, claims.InstanceID, nil
 }
