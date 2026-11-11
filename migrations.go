@@ -80,6 +80,11 @@ var migrations = []Migration{
 		Name:  "add_webhook_use_proxy",
 		UpSQL: addWebhookUseProxySQL,
 	},
+	{
+		ID:    11,
+		Name:  "add_custom_s3",
+		UpSQL: addCustomS3SQL,
+	},
 }
 
 const changeIDToStringSQL = `
@@ -240,6 +245,57 @@ DO $$
 BEGIN
     IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'users' AND column_name = 'webhook_use_proxy') THEN
         ALTER TABLE users ADD COLUMN webhook_use_proxy BOOLEAN DEFAULT TRUE;
+    END IF;
+END $$;
+
+-- SQLite version (handled in code)
+`
+
+// Slot do storage próprio do integrador (feature 028, US2). custom_s3_key_prefix é o prefixo
+// completo da chave, já com media/{instanceId}/. custom_s3_access_key e custom_s3_secret_key
+// guardam o texto cifrado por encryptHMACKey, a mesma cifra de hmac_key.
+var customS3ColumnsSQLite = [][2]string{
+	{"custom_s3_enabled", "BOOLEAN DEFAULT 0"},
+	{"custom_s3_endpoint", "TEXT DEFAULT ''"},
+	{"custom_s3_region", "TEXT DEFAULT ''"},
+	{"custom_s3_bucket", "TEXT DEFAULT ''"},
+	{"custom_s3_path_style", "BOOLEAN DEFAULT 0"},
+	{"custom_s3_public_url", "TEXT DEFAULT ''"},
+	{"custom_s3_key_prefix", "TEXT DEFAULT ''"},
+	{"custom_s3_access_key", "BLOB"},
+	{"custom_s3_secret_key", "BLOB"},
+}
+
+const addCustomS3SQL = `
+-- PostgreSQL version - slot do storage próprio do integrador (credenciais cifradas)
+DO $$
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'users' AND column_name = 'custom_s3_enabled') THEN
+        ALTER TABLE users ADD COLUMN custom_s3_enabled BOOLEAN DEFAULT FALSE;
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'users' AND column_name = 'custom_s3_endpoint') THEN
+        ALTER TABLE users ADD COLUMN custom_s3_endpoint TEXT DEFAULT '';
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'users' AND column_name = 'custom_s3_region') THEN
+        ALTER TABLE users ADD COLUMN custom_s3_region TEXT DEFAULT '';
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'users' AND column_name = 'custom_s3_bucket') THEN
+        ALTER TABLE users ADD COLUMN custom_s3_bucket TEXT DEFAULT '';
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'users' AND column_name = 'custom_s3_path_style') THEN
+        ALTER TABLE users ADD COLUMN custom_s3_path_style BOOLEAN DEFAULT FALSE;
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'users' AND column_name = 'custom_s3_public_url') THEN
+        ALTER TABLE users ADD COLUMN custom_s3_public_url TEXT DEFAULT '';
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'users' AND column_name = 'custom_s3_key_prefix') THEN
+        ALTER TABLE users ADD COLUMN custom_s3_key_prefix TEXT DEFAULT '';
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'users' AND column_name = 'custom_s3_access_key') THEN
+        ALTER TABLE users ADD COLUMN custom_s3_access_key BYTEA;
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'users' AND column_name = 'custom_s3_secret_key') THEN
+        ALTER TABLE users ADD COLUMN custom_s3_secret_key BYTEA;
     END IF;
 END $$;
 
@@ -476,6 +532,18 @@ func applyMigration(db *sqlx.DB, migration Migration) error {
 	} else if migration.ID == 10 {
 		if db.DriverName() == "sqlite" {
 			err = addColumnIfNotExistsSQLite(tx, "users", "webhook_use_proxy", "BOOLEAN DEFAULT 1")
+		} else {
+			_, err = tx.Exec(migration.UpSQL)
+		}
+	} else if migration.ID == 11 {
+		if db.DriverName() == "sqlite" {
+			// Slot do storage próprio do integrador (feature 028). As credenciais são BLOB,
+			// cifradas como hmac_key.
+			for _, col := range customS3ColumnsSQLite {
+				if err = addColumnIfNotExistsSQLite(tx, "users", col[0], col[1]); err != nil {
+					break
+				}
+			}
 		} else {
 			_, err = tx.Exec(migration.UpSQL)
 		}

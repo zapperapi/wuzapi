@@ -59,6 +59,9 @@ func (s *server) routes() {
 	adminRoutes.Handle("/users/{id}", s.EditUser()).Methods("PUT")
 	adminRoutes.Handle("/users/{id}", s.DeleteUser()).Methods("DELETE")
 	adminRoutes.Handle("/users/{id}/full", s.DeleteUserComplete()).Methods("DELETE")
+	// Storage próprio do integrador (feature 028, US2): segundo slot de S3 por usuário.
+	adminRoutes.Handle("/users/{id}/custom-s3", s.SetCustomS3()).Methods("PUT")
+	adminRoutes.Handle("/users/{id}/custom-s3", s.DeleteCustomS3()).Methods("DELETE")
 
 	c := alice.New()
 	c = c.Append(s.authalice)

@@ -286,6 +286,12 @@ func main() {
 	if v := os.Getenv("WUZAPI_WEBHOOK_USE_PROXY"); v != "" {
 		*globalWebhookUseProxy = strings.ToLower(v) == "true" || v == "1"
 	}
+	// Feature 028 (US2): prazo de cada gravação no storage próprio do integrador (padrão 4000).
+	if v := os.Getenv("CUSTOM_S3_TIMEOUT_MS"); v != "" {
+		if ms, err := strconv.Atoi(v); err == nil && ms > 0 {
+			customS3Timeout = time.Duration(ms) * time.Millisecond
+		}
+	}
 
 	log.Info().
 		Bool("use_proxy", *globalWebhookUseProxy).

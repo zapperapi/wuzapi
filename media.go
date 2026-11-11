@@ -70,7 +70,10 @@ func (mycli *MyClient) processMedia(
 	}()
 
 	if s3cfg.Enabled == "true" && (s3cfg.MediaDelivery == "s3" || s3cfg.MediaDelivery == "both") {
-		s3Data, err := GetS3Manager().ProcessMediaForS3(
+		// Feature 028 (US2): StoreMedia tenta o storage próprio do integrador antes do slot
+		// padrão. Só com o storage próprio cadastrado o resultado traz `storage` e, quando a
+		// mídia caiu no slot padrão, `customError`; sem ele, o `s3` sai como antes.
+		s3Data, err := GetS3Manager().StoreMedia(
 			ctx,
 			mycli.userID,
 			chatJID,

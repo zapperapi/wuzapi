@@ -212,6 +212,108 @@ paths:
             application/json:
               schema:
                 example: {"code":200,"data":{"id":"4e4942c7dee1deef99ab8fd9f7350de5","jid":"","name":"mariano"},"details":"User instance removed completely","success":true}
+  /admin/users/{id}/custom-s3:
+    put:
+      tags:
+        - Admin
+      summary: Set the integrator's own storage (second S3 slot)
+      description: |
+        Stores the second S3 slot of the user: the integrator's own storage. Received media is written to this slot first. If the write fails, exceeds the timeout (`CUSTOM_S3_TIMEOUT_MS`, default 4000 ms) or the slot is paused after a failure (60 s), the media goes to the default S3 slot.
+
+        `access_key` and `secret_key` are stored encrypted with the global encryption key. The response never returns them.
+
+        `endpoint` must be an `https` URL. Connections to private, loopback, link-local and CGNAT addresses are refused. `key_prefix` is the full key prefix, including `media/{instanceId}/`. The object key is `{key_prefix}{timestamp_ms}-{messageId}{ext}`.
+
+        With this slot set, the `s3` object of the message webhook has two more fields: `storage` (`custom` or `default`) and, when the media went to the default slot, `customError.reason` (`ACCESS_DENIED`, `NOT_FOUND`, `TIMEOUT`, `UNREACHABLE`, `TOO_LARGE` or `UNKNOWN`).
+      security:
+        - AdminAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: ID of the user
+          schema:
+            type: string
+            example: 4e4942c7dee1deef99ab8fd9f7350de5
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [endpoint, bucket, key_prefix, access_key, secret_key]
+              properties:
+                endpoint:
+                  type: string
+                  example: "https://s3.us-east-1.amazonaws.com"
+                region:
+                  type: string
+                  example: "us-east-1"
+                bucket:
+                  type: string
+                  example: "integrator-media"
+                path_style:
+                  type: boolean
+                  example: false
+                public_url:
+                  type: string
+                  example: "https://cdn.integrator.example.com"
+                key_prefix:
+                  type: string
+                  example: "zapper/media/4e4942c7dee1deef99ab8fd9f7350de5/"
+                access_key:
+                  type: string
+                  example: "AKIA..."
+                secret_key:
+                  type: string
+                  example: "***"
+      responses:
+        200:
+          description: Slot stored. Credentials are not returned.
+          content:
+            application/json:
+              schema:
+                example: {"code":200,"data":{"id":"4e4942c7dee1deef99ab8fd9f7350de5","enabled":true,"endpoint":"https://s3.us-east-1.amazonaws.com","region":"us-east-1","bucket":"integrator-media","path_style":false,"public_url":"https://cdn.integrator.example.com","key_prefix":"zapper/media/4e4942c7dee1deef99ab8fd9f7350de5/"},"details":"custom S3 configured","success":true}
+        400:
+          description: Invalid body, missing field, or endpoint that is not https
+          content:
+            application/json:
+              schema:
+                example: {"code":400,"error":"endpoint must be an https URL","success":false}
+        404:
+          description: User not found
+          content:
+            application/json:
+              schema:
+                example: {"code":404,"error":"user not found","success":false}
+    delete:
+      tags:
+        - Admin
+      summary: Remove the integrator's own storage
+      description: Removes the second S3 slot of the user. Media goes only to the default S3 slot, and the message webhook no longer has `s3.storage` and `s3.customError`.
+      security:
+        - AdminAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: ID of the user
+          schema:
+            type: string
+            example: 4e4942c7dee1deef99ab8fd9f7350de5
+      responses:
+        200:
+          description: Slot removed
+          content:
+            application/json:
+              schema:
+                example: {"code":200,"data":{"id":"4e4942c7dee1deef99ab8fd9f7350de5","enabled":false},"details":"custom S3 removed","success":true}
+        404:
+          description: User not found
+          content:
+            application/json:
+              schema:
+                example: {"code":404,"error":"user not found","success":false}
   /newsletter/list:
     get:
       tags:

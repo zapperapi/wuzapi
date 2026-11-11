@@ -5943,6 +5943,9 @@ func (s *server) DeleteUser() http.HandlerFunc {
 			return
 		}
 
+		// O slot do storage próprio sai da memória junto com o usuário.
+		GetS3Manager().RemoveCustomSlot(userID)
+
 		// Check if the user was deleted
 		rowsAffected, err := result.RowsAffected()
 		if err != nil {
@@ -5967,6 +5970,189 @@ func (s *server) DeleteUser() http.HandlerFunc {
 			"data":    map[string]string{"id": userID},
 			"success": true,
 			"details": "user deleted successfully",
+		})
+	}
+}
+
+// SetCustomS3 grava o slot do storage próprio do integrador (feature 028, US2). O manager chama
+// a rota no cadastro e no job Connected, para reconciliar. As credenciais são cifradas com a
+// chave global, como hmac_key, e nunca voltam na resposta nem entram no log.
+func (s *server) SetCustomS3() http.HandlerFunc {
+	type customS3Body struct {
+		Endpoint  string `json:"endpoint"`
+		Region    string `json:"region"`
+		Bucket    string `json:"bucket"`
+		PathStyle bool   `json:"path_style"`
+		PublicURL string `json:"public_url"`
+		KeyPrefix string `json:"key_prefix"`
+		AccessKey string `json:"access_key"`
+		SecretKey string `json:"secret_key"`
+	}
+
+	badRequest := func(w http.ResponseWriter, msg string) {
+		s.respondWithJSON(w, http.StatusBadRequest, map[string]interface{}{
+			"code":    http.StatusBadRequest,
+			"error":   msg,
+			"success": false,
+		})
+	}
+
+	return func(w http.ResponseWriter, r *http.Request) {
+		userID := mux.Vars(r)["id"]
+
+		var b customS3Body
+		if err := json.NewDecoder(r.Body).Decode(&b); err != nil {
+			badRequest(w, "could not decode payload")
+			return
+		}
+		b.Endpoint = strings.TrimRight(strings.TrimSpace(b.Endpoint), "/")
+		b.Region = strings.TrimSpace(b.Region)
+		b.Bucket = strings.TrimSpace(b.Bucket)
+		b.PublicURL = strings.TrimSpace(b.PublicURL)
+		b.KeyPrefix = strings.TrimLeft(strings.TrimSpace(b.KeyPrefix), "/")
+
+		if b.Endpoint == "" || b.Bucket == "" || b.KeyPrefix == "" || b.AccessKey == "" || b.SecretKey == "" {
+			badRequest(w, "endpoint, bucket, key_prefix, access_key and secret_key are required")
+			return
+		}
+		// O cadastro no manager já exige https e recusa endereço privado; aqui a exigência de
+		// https se repete, e o cliente HTTP anti-SSRF recusa endereço privado a cada conexão.
+		if u, err := url.Parse(b.Endpoint); err != nil || u.Scheme != "https" || u.Host == "" {
+			badRequest(w, "endpoint must be an https URL")
+			return
+		}
+		if b.PublicURL != "" {
+			if u, err := url.Parse(b.PublicURL); err != nil || (u.Scheme != "https" && u.Scheme != "http") || u.Host == "" {
+				badRequest(w, "public_url must be an http(s) URL")
+				return
+			}
+		}
+
+		// A cifra só falha sem chave global; a mensagem de erro não carrega a credencial.
+		encAccess, errAccess := encryptHMACKey(b.AccessKey)
+		encSecret, errSecret := encryptHMACKey(b.SecretKey)
+		if errAccess != nil || errSecret != nil {
+			log.Error().Str("userID", userID).Msg("falha ao cifrar as credenciais do storage próprio")
+			s.respondWithJSON(w, http.StatusInternalServerError, map[string]interface{}{
+				"code":    http.StatusInternalServerError,
+				"error":   "failed to encrypt credentials",
+				"success": false,
+			})
+			return
+		}
+
+		result, err := s.db.Exec(`
+			UPDATE users SET
+				custom_s3_enabled = $1,
+				custom_s3_endpoint = $2,
+				custom_s3_region = $3,
+				custom_s3_bucket = $4,
+				custom_s3_path_style = $5,
+				custom_s3_public_url = $6,
+				custom_s3_key_prefix = $7,
+				custom_s3_access_key = $8,
+				custom_s3_secret_key = $9
+			WHERE id = $10`,
+			true, b.Endpoint, b.Region, b.Bucket, b.PathStyle, b.PublicURL, b.KeyPrefix,
+			encAccess, encSecret, userID)
+		if err != nil {
+			log.Error().Err(err).Str("userID", userID).Msg("falha ao gravar o storage próprio")
+			s.respondWithJSON(w, http.StatusInternalServerError, map[string]interface{}{
+				"code":    http.StatusInternalServerError,
+				"error":   "database error",
+				"success": false,
+			})
+			return
+		}
+		if n, rerr := result.RowsAffected(); rerr == nil && n == 0 {
+			s.respondWithJSON(w, http.StatusNotFound, map[string]interface{}{
+				"code":    http.StatusNotFound,
+				"error":   "user not found",
+				"success": false,
+			})
+			return
+		}
+
+		cfg := &CustomS3Config{
+			Endpoint:  b.Endpoint,
+			Region:    b.Region,
+			Bucket:    b.Bucket,
+			PathStyle: b.PathStyle,
+			PublicURL: b.PublicURL,
+			KeyPrefix: b.KeyPrefix,
+			AccessKey: b.AccessKey,
+			SecretKey: b.SecretKey,
+		}
+		if err := GetS3Manager().SetCustomSlot(userID, cfg); err != nil {
+			log.Error().Err(err).Str("userID", userID).Msg("falha ao recriar o cliente do storage próprio")
+			s.respondWithJSON(w, http.StatusInternalServerError, map[string]interface{}{
+				"code":    http.StatusInternalServerError,
+				"error":   "failed to initialize custom S3 client",
+				"success": false,
+			})
+			return
+		}
+
+		fields := cfg.LogFields()
+		log.Info().Str("userID", userID).Interface("customS3", fields).Msg("storage próprio configurado")
+
+		data := map[string]interface{}{"id": userID, "enabled": true}
+		for k, v := range fields {
+			data[k] = v
+		}
+		s.respondWithJSON(w, http.StatusOK, map[string]interface{}{
+			"code":    http.StatusOK,
+			"data":    data,
+			"success": true,
+			"details": "custom S3 configured",
+		})
+	}
+}
+
+// DeleteCustomS3 apaga o slot do storage próprio do integrador. A mídia volta a ir só para o
+// slot padrão.
+func (s *server) DeleteCustomS3() http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		userID := mux.Vars(r)["id"]
+
+		result, err := s.db.Exec(`
+			UPDATE users SET
+				custom_s3_enabled = $1,
+				custom_s3_endpoint = '',
+				custom_s3_region = '',
+				custom_s3_bucket = '',
+				custom_s3_path_style = $2,
+				custom_s3_public_url = '',
+				custom_s3_key_prefix = '',
+				custom_s3_access_key = NULL,
+				custom_s3_secret_key = NULL
+			WHERE id = $3`, false, false, userID)
+		if err != nil {
+			log.Error().Err(err).Str("userID", userID).Msg("falha ao apagar o storage próprio")
+			s.respondWithJSON(w, http.StatusInternalServerError, map[string]interface{}{
+				"code":    http.StatusInternalServerError,
+				"error":   "database error",
+				"success": false,
+			})
+			return
+		}
+		if n, rerr := result.RowsAffected(); rerr == nil && n == 0 {
+			s.respondWithJSON(w, http.StatusNotFound, map[string]interface{}{
+				"code":    http.StatusNotFound,
+				"error":   "user not found",
+				"success": false,
+			})
+			return
+		}
+
+		GetS3Manager().RemoveCustomSlot(userID)
+		log.Info().Str("userID", userID).Msg("storage próprio removido")
+
+		s.respondWithJSON(w, http.StatusOK, map[string]interface{}{
+			"code":    http.StatusOK,
+			"data":    map[string]interface{}{"id": userID, "enabled": false},
+			"success": true,
+			"details": "custom S3 removed",
 		})
 	}
 }
@@ -6048,6 +6234,7 @@ func (s *server) DeleteUserComplete() http.HandlerFunc {
 			})
 			return
 		}
+		GetS3Manager().RemoveCustomSlot(id)
 
 		// 4. Cleanup from memory
 		clientManager.DeleteWhatsmeowClient(id)
