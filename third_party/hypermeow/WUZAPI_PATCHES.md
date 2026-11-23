@@ -120,7 +120,32 @@ Quando a investigação terminar, manter só o formato que o servidor aceita e r
   `WAWebQueryProductCollectionsQuery`, `WAWebQueryProductListCatalogJobQuery` e
   `WAWebQueryProductSingleCollectionQuery`). Entre os bundles `1053682356` e `1055901559` só o ID
   mudou nessas consultas. `DeleteNewsletter`, `BizCreateOrder` e `BizQueryOrder` já tinham o ID atual.
-- **Não verificado:** as consultas de catálogo com os IDs novos não foram testadas com uma conta real.
+- **Teste dos IDs:** ver a seção 11.
+
+## 11. Consultas de catálogo por HTTP
+
+- **Arquivos:** `business.go` (`sendBusinessMex` e os construtores de variáveis) e
+  `catalog_transport_test.go` (novo).
+- **Problema:** `GetCatalog`, `GetCatalogProduct`, `GetCatalogProducts`, `GetProductCollections` e
+  `GetProductCollection` iam pelo IQ `w:mex`. O servidor devolvia `400 Bad Request` com o ID novo,
+  com o ID antigo e com um ID inexistente, para JID de telefone e para LID.
+- **Causa:** o cliente oficial não usa `w:mex` nessas consultas. `WAWebRelayEnvironment` (ambiente
+  `whatsapp_catalog`) faz `POST https://graph.whatsapp.com/graphql/catalog` com `access_token`,
+  `doc_id` e `variables`.
+- **Mudança:** `sendBusinessMex` chama `sendBusinessFacebookGraphQL` com o endpoint e o token de
+  catálogo que a consulta de conformidade do lojista já usava. As variáveis não levam mais
+  `variant_info_fields: {}`: o servidor recusava o objeto vazio com `noncoercible_variable_value`.
+- **Evidência** (teste local com conta real, 2026-11-23, conta comercial sem catálogo):
+  - Um ID inexistente devolve `The GraphQL document with ID ... was not found`. Os IDs novos e os
+    antigos são aceitos.
+  - `GetCatalog` devolve o código `2498052` (item não encontrado).
+  - `GetProductCollections` devolve a lista vazia.
+  - `GetCatalogProduct` com ID fictício devolve `2498053`. `GetProductCollection` devolve `2498052`
+    (JID de telefone) ou `2498055` (LID).
+  - `GetCatalogProducts` com ID fictício devolve um produto vazio com o mesmo ID.
+- **Não verificado:** a resposta com produtos e coleções reais. Falta uma conta com catálogo.
+- **Não alterado:** o JID vai como telefone. O Web envia o LID quando a flag
+  `wa_catalog_graphql_use_lid_enabled` está ligada; o servidor aceitou os dois formatos.
 
 ## Como atualizar a base
 

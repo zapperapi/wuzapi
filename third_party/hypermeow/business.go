@@ -601,7 +601,6 @@ func buildCatalogVariables(jid types.JID, params GetCatalogParams) (map[string]a
 		"height":                   strconv.Itoa(height),
 		"variant_thumbnail_width":  strconv.Itoa(width),
 		"variant_thumbnail_height": strconv.Itoa(height),
-		"variant_info_fields":      map[string]any{},
 		"allow_shop_source":        "ALLOWSHOPSOURCE_FALSE",
 	}
 	if params.After != "" {
@@ -638,7 +637,6 @@ func buildCatalogProductVariables(jid types.JID, productID string, width, height
 		"height":                   strconv.Itoa(height),
 		"variant_thumbnail_width":  strconv.Itoa(width),
 		"variant_thumbnail_height": strconv.Itoa(height),
-		"variant_info_fields":      map[string]any{},
 		"fetch_compliance_info":    "true",
 	}}}, nil
 }
@@ -674,7 +672,6 @@ func buildCollectionsVariables(jid types.JID, params GetCollectionsParams) (map[
 		"height":                   strconv.Itoa(height),
 		"variant_thumbnail_width":  strconv.Itoa(width),
 		"variant_thumbnail_height": strconv.Itoa(height),
-		"variant_info_fields":      map[string]any{},
 	}
 	if params.After != "" {
 		request["after"] = params.After
@@ -710,7 +707,6 @@ func buildSingleCollectionVariables(jid types.JID, collectionID string, params G
 		"height":                   strconv.Itoa(height),
 		"variant_thumbnail_width":  strconv.Itoa(width),
 		"variant_thumbnail_height": strconv.Itoa(height),
-		"variant_info_fields":      map[string]any{},
 	}
 	if params.After != "" {
 		request["after"] = params.After
@@ -935,12 +931,15 @@ func (cli *Client) GetCatalogProducts(ctx context.Context, business types.JID, p
 	return decodeProductList(data, productIDs)
 }
 
+// sendBusinessMex envia uma consulta de catálogo. O nome ficou do transporte antigo: o cliente
+// oficial não manda estas consultas pelo IQ w:mex, e sim por HTTP para graph.whatsapp.com/graphql/catalog
+// (WAWebRelayEnvironment, ambiente "whatsapp_catalog"). Pelo IQ o servidor devolve 400 para qualquer ID.
 func (cli *Client) sendBusinessMex(ctx context.Context, operationName mex.OperationName, variables map[string]any) (json.RawMessage, error) {
 	operation, ok := mex.Lookup(operationName)
 	if !ok {
 		return nil, fmt.Errorf("business MEX operation %q is not pinned", operationName)
 	}
-	data, err := cli.sendMexIQ(ctx, operation.DocumentID, variables)
+	data, err := cli.sendBusinessFacebookGraphQL(ctx, businessCatalogGraphQLEndpoint, operation.DocumentID, businessCatalogGraphQLAccessToken, variables)
 	if err != nil {
 		return nil, fmt.Errorf("%s: %w", operationName, err)
 	}
