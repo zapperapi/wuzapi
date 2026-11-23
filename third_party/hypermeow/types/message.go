@@ -90,6 +90,11 @@ type MsgMetaInfo struct {
 
 	ThreadMessageID        MessageID
 	ThreadMessageSenderJID JID
+
+	// IsGroupStatus marks a message sent to a group JID as a group status
+	// (`<meta is_group_status="true">`). The payload must be wrapped in
+	// GroupStatusMessageV2, which is how receivers recognise it.
+	IsGroupStatus bool
 }
 
 // MessageInfo contains metadata about an incoming message.

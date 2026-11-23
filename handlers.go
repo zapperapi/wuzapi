@@ -1064,6 +1064,7 @@ func (s *server) SendAudio() http.HandlerFunc {
 		Waveform      []byte
 		ContextInfo   waE2E.ContextInfo
 		QuotedMessage *waE2E.Message `json:"QuotedMessage,omitempty"`
+		GroupStatus   bool           `json:"GroupStatus,omitempty"`
 	}
 
 	return func(w http.ResponseWriter, r *http.Request) {
@@ -1221,7 +1222,15 @@ func (s *server) SendAudio() http.HandlerFunc {
 		if isNewsletterJID(recipient) {
 			sendExtra.MediaHandle = uploaded.Handle
 		}
-		resp, err = client.SendMessage(context.Background(), recipient, msg, sendExtra)
+		sendMsg := msg
+		if t.GroupStatus {
+			sendMsg, err = wrapGroupStatus(recipient, msg, &sendExtra)
+			if err != nil {
+				s.Respond(w, r, http.StatusBadRequest, err)
+				return
+			}
+		}
+		resp, err = client.SendMessage(context.Background(), recipient, sendMsg, sendExtra)
 		if err != nil {
 			s.Respond(w, r, http.StatusInternalServerError, errors.New(fmt.Sprintf("Error sending message: %v", err)))
 			return
@@ -1280,6 +1289,7 @@ func (s *server) SendImage() http.HandlerFunc {
 		MimeType      string
 		ContextInfo   waE2E.ContextInfo
 		QuotedMessage *waE2E.Message `json:"QuotedMessage,omitempty"`
+		GroupStatus   bool           `json:"GroupStatus,omitempty"`
 	}
 
 	return func(w http.ResponseWriter, r *http.Request) {
@@ -1442,7 +1452,15 @@ func (s *server) SendImage() http.HandlerFunc {
 		if isNewsletterJID(recipient) {
 			sendExtra.MediaHandle = uploaded.Handle
 		}
-		resp, err = clientManager.GetWhatsmeowClient(txtid).SendMessage(context.Background(), recipient, msg, sendExtra)
+		sendMsg := msg
+		if t.GroupStatus {
+			sendMsg, err = wrapGroupStatus(recipient, msg, &sendExtra)
+			if err != nil {
+				s.Respond(w, r, http.StatusBadRequest, err)
+				return
+			}
+		}
+		resp, err = clientManager.GetWhatsmeowClient(txtid).SendMessage(context.Background(), recipient, sendMsg, sendExtra)
 		if err != nil {
 			s.Respond(w, r, http.StatusInternalServerError, errors.New(fmt.Sprintf("Error sending message: %v", err)))
 			return
@@ -1761,6 +1779,7 @@ func (s *server) SendVideo() http.HandlerFunc {
 		MimeType      string
 		ContextInfo   waE2E.ContextInfo
 		QuotedMessage *waE2E.Message `json:"QuotedMessage,omitempty"`
+		GroupStatus   bool           `json:"GroupStatus,omitempty"`
 	}
 
 	return func(w http.ResponseWriter, r *http.Request) {
@@ -1907,7 +1926,15 @@ func (s *server) SendVideo() http.HandlerFunc {
 		if isNewsletterJID(recipient) {
 			sendExtra.MediaHandle = uploaded.Handle
 		}
-		resp, err = clientManager.GetWhatsmeowClient(txtid).SendMessage(context.Background(), recipient, msg, sendExtra)
+		sendMsg := msg
+		if t.GroupStatus {
+			sendMsg, err = wrapGroupStatus(recipient, msg, &sendExtra)
+			if err != nil {
+				s.Respond(w, r, http.StatusBadRequest, err)
+				return
+			}
+		}
+		resp, err = clientManager.GetWhatsmeowClient(txtid).SendMessage(context.Background(), recipient, sendMsg, sendExtra)
 		if err != nil {
 			s.Respond(w, r, http.StatusInternalServerError, errors.New(fmt.Sprintf("error sending message: %v", err)))
 			return
@@ -2633,6 +2660,7 @@ func (s *server) SendMessage() http.HandlerFunc {
 		ContextInfo   waE2E.ContextInfo
 		QuotedText    string         `json:"QuotedText,omitempty"`
 		QuotedMessage *waE2E.Message `json:"QuotedMessage,omitempty"`
+		GroupStatus   bool           `json:"GroupStatus,omitempty"`
 	}
 	return func(w http.ResponseWriter, r *http.Request) {
 		start := time.Now()
@@ -2757,7 +2785,16 @@ func (s *server) SendMessage() http.HandlerFunc {
 		}
 		log.Info().Int64("elapsed_ms", time.Since(start).Milliseconds()).Str("msgid", msgid).Msg("SendMessage: chamando whatsmeow.SendMessage")
 		sendStart := time.Now()
-		resp, err = clientManager.GetWhatsmeowClient(txtid).SendMessage(context.Background(), recipient, msg, whatsmeow.SendRequestExtra{ID: msgid})
+		textExtra := whatsmeow.SendRequestExtra{ID: msgid}
+		sendMsg := msg
+		if t.GroupStatus {
+			sendMsg, err = wrapGroupStatus(recipient, msg, &textExtra)
+			if err != nil {
+				s.Respond(w, r, http.StatusBadRequest, err)
+				return
+			}
+		}
+		resp, err = clientManager.GetWhatsmeowClient(txtid).SendMessage(context.Background(), recipient, sendMsg, textExtra)
 		if err != nil {
 			s.Respond(w, r, http.StatusInternalServerError, errors.New(fmt.Sprintf("error sending message: %v", err)))
 			return
