@@ -208,6 +208,13 @@ func (s *server) routes() {
 	s.router.Handle("/group/updaterequestparticipants", c.Then(s.UpdateGroupRequestParticipants())).Methods("POST")
 	s.router.Handle("/group/joinapprovalmode", c.Then(s.SetGroupJoinApprovalMode())).Methods("POST")
 
+	s.router.Handle("/community/create", c.Then(s.CreateCommunity())).Methods("POST")
+	s.router.Handle("/community/group/create", c.Then(s.CreateCommunityGroup())).Methods("POST")
+	s.router.Handle("/community/link", c.Then(s.LinkCommunityGroup())).Methods("POST")
+	s.router.Handle("/community/unlink", c.Then(s.UnlinkCommunityGroup())).Methods("POST")
+	s.router.Handle("/community/groups", c.Then(s.GetCommunityGroups())).Methods("GET")
+	s.router.Handle("/community/participants", c.Then(s.GetCommunityParticipants())).Methods("GET")
+
 	s.router.Handle("/newsletter/list", c.Then(s.ListNewsletter())).Methods("GET")
 
 	s.router.PathPrefix("/").Handler(http.FileServer(http.Dir(exPath + "/static/")))

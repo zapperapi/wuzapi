@@ -4582,7 +4582,17 @@ func (s *server) GroupJoin() http.HandlerFunc {
 			return
 		}
 
-		_, err = clientManager.GetWhatsmeowClient(txtid).JoinGroupWithLink(context.Background(), t.Code)
+		// JoinGroupWithLink devolve o JID do grupo tanto na entrada direta quanto quando o
+		// grupo exige aprovação de um admin. Os dados do convite dizem qual dos dois vale.
+		inviteInfo, err := clientManager.GetWhatsmeowClient(txtid).GetGroupInfoFromLink(context.Background(), t.Code)
+		if err != nil {
+			log.Error().Str("error", fmt.Sprintf("%v", err)).Msg("failed to get group invite info")
+			msg := fmt.Sprintf("failed to join group: %v", err)
+			s.Respond(w, r, http.StatusInternalServerError, errors.New(msg))
+			return
+		}
+
+		groupJID, err := clientManager.GetWhatsmeowClient(txtid).JoinGroupWithLink(context.Background(), t.Code)
 
 		if err != nil {
 			log.Error().Str("error", fmt.Sprintf("%v", err)).Msg("failed to join group")
@@ -4591,7 +4601,11 @@ func (s *server) GroupJoin() http.HandlerFunc {
 			return
 		}
 
-		response := map[string]interface{}{"Details": "Group joined successfully"}
+		response := map[string]interface{}{
+			"Details":         "Group joined successfully",
+			"JID":             groupJID,
+			"PendingApproval": inviteInfo.IsJoinApprovalRequired,
+		}
 		responseJson, err := json.Marshal(response)
 
 		if err != nil {

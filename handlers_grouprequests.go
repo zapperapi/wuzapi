@@ -135,7 +135,8 @@ func (s *server) UpdateGroupRequestParticipants() http.HandlerFunc {
 			return
 		}
 
-		_, err = client.UpdateGroupRequestParticipants(r.Context(), group, phoneParsed, action)
+		// Um resultado por pedido: o código de recusa de cada um vem em Error.
+		participants, err := client.UpdateGroupRequestParticipants(r.Context(), group, phoneParsed, action)
 
 		if err != nil {
 			log.Error().Str("error", fmt.Sprintf("%v", err)).Msg("failed to update group request participants")
@@ -144,7 +145,7 @@ func (s *server) UpdateGroupRequestParticipants() http.HandlerFunc {
 			return
 		}
 
-		response := map[string]interface{}{"Details": "Group request participants updated successfully"}
+		response := map[string]interface{}{"Details": "Group request participants updated successfully", "Participants": participants}
 		responseJson, err := json.Marshal(response)
 
 		if err != nil {
