@@ -4934,7 +4934,10 @@ func (s *server) UpdateGroupParticipants() http.HandlerFunc {
 			return
 		}
 
-		_, err = clientManager.GetWhatsmeowClient(txtid).UpdateGroupParticipants(context.Background(), group, phoneParsed, action)
+		// O WhatsApp responde um resultado por participante: a stanza tem sucesso mesmo quando
+		// alguns são recusados (privacidade, número sem WhatsApp, grupo cheio). O código de cada
+		// recusa vem em Error, e AddRequest traz o convite quando o participante só entra por ele.
+		participants, err := clientManager.GetWhatsmeowClient(txtid).UpdateGroupParticipants(context.Background(), group, phoneParsed, action)
 
 		if err != nil {
 			log.Error().Str("error", fmt.Sprintf("%v", err)).Msg("failed to change participant group")
@@ -4943,7 +4946,7 @@ func (s *server) UpdateGroupParticipants() http.HandlerFunc {
 			return
 		}
 
-		response := map[string]interface{}{"Details": "Group Participants updated successfully"}
+		response := map[string]interface{}{"Details": "Group Participants updated successfully", "Participants": participants}
 		responseJson, err := json.Marshal(response)
 
 		if err != nil {
