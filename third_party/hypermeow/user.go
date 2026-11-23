@@ -268,11 +268,31 @@ func parseUSyncUsername(user waBinary.Node) string {
 	return contact.AttrGetter().OptionalString("username")
 }
 
+// parseUSyncAbout returns the about text of a usync user node.
+//
+// The official web client no longer requests the legacy <status> protocol and
+// reads the about text from <text_status text="...">. The legacy node is
+// preferred while the server still answers it; <text_status> is the fallback.
+func parseUSyncAbout(user *waBinary.Node) string {
+	if status, ok := user.GetChildByTag("status").Content.([]byte); ok && len(status) > 0 {
+		return string(status)
+	}
+	textStatus, ok := user.GetOptionalChildByTag("text_status")
+	if !ok {
+		return ""
+	}
+	if _, hasError := textStatus.GetOptionalChildByTag("error"); hasError {
+		return ""
+	}
+	return textStatus.AttrGetter().OptionalString("text")
+}
+
 // GetUserInfo gets basic user info (avatar, status, verified business name, device list).
 func (cli *Client) GetUserInfo(ctx context.Context, jids []types.JID) (map[types.JID]types.UserInfo, error) {
 	list, err := cli.usync(ctx, jids, "full", "background", []waBinary.Node{
 		{Tag: "business", Content: []waBinary.Node{{Tag: "verified_name"}}},
 		{Tag: "status"},
+		{Tag: "text_status"},
 		{Tag: "picture"},
 		{Tag: "devices", Attrs: waBinary.Attrs{"version": "2"}},
 		{Tag: "lid"},
@@ -296,8 +316,7 @@ func (cli *Client) GetUserInfo(ctx context.Context, jids []types.JID) (map[types
 		if err != nil {
 			cli.Log.Warnf("Failed to parse %s's verified name details: %v", jid, err)
 		}
-		status, _ := child.GetChildByTag("status").Content.([]byte)
-		info.Status = string(status)
+		info.Status = parseUSyncAbout(&child)
 		info.PictureID, _ = child.GetChildByTag("picture").Attrs["id"].(string)
 		info.Devices = parseDeviceList(jid, child.GetChildByTag("devices"))
 

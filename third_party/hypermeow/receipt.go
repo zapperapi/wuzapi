@@ -74,6 +74,7 @@ func (cli *Client) parseReceipt(node *waBinary.Node) (*events.Receipt, []waBinar
 		Type:          types.ReceiptType(ag.OptionalString("type")),
 		MessageSender: ag.OptionalJIDOrEmpty("recipient"),
 	}
+	receipt.ErrorType = parseReceiptErrorType(node, receipt.Type)
 	if source.IsGroup && source.Sender.IsEmpty() {
 		participantTags := node.GetChildrenByTag("participants")
 		if len(participantTags) == 0 {
@@ -100,6 +101,19 @@ func (cli *Client) parseReceipt(node *waBinary.Node) (*events.Receipt, []waBinar
 		receipt.MessageIDs = []types.MessageID{mainMessageID}
 	}
 	return &receipt, nil, nil
+}
+
+// parseReceiptErrorType returns the type attribute of the <error> child of an
+// error receipt, e.g. "integrity-drop". It returns "" for other receipt types.
+func parseReceiptErrorType(node *waBinary.Node, receiptType types.ReceiptType) string {
+	if receiptType != types.ReceiptTypeError {
+		return ""
+	}
+	errorNode, ok := node.GetOptionalChildByTag("error")
+	if !ok {
+		return ""
+	}
+	return errorNode.AttrGetter().OptionalString("type")
 }
 
 func (cli *Client) backgroundIfAsyncAck(fn func()) {

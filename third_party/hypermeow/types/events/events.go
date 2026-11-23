@@ -460,6 +460,20 @@ type Receipt struct {
 	// When you read the message of another user in a group, this field contains the sender of the message.
 	// For receipts from other users, the message sender is always you.
 	MessageSender types.JID
+
+	// ErrorType is the type attribute of the <error> child. It is only set when
+	// Type is types.ReceiptTypeError.
+	ErrorType string
+}
+
+// ReceiptErrorIntegrityDrop is the ErrorType of a message that WhatsApp's
+// integrity systems dropped. The message did not reach the recipient.
+const ReceiptErrorIntegrityDrop = "integrity-drop"
+
+// IsIntegrityDrop reports whether the receipt says that the message was dropped
+// by WhatsApp's integrity systems. The official client marks such a message as failed.
+func (evt *Receipt) IsIntegrityDrop() bool {
+	return evt.Type == types.ReceiptTypeError && evt.ErrorType == ReceiptErrorIntegrityDrop
 }
 
 // ChatPresence is emitted when a chat state update (also known as typing notification) is received.

@@ -66,6 +66,29 @@ uma atualização futura saber o que reaplicar ou descartar.
 As três últimas são as formas do cliente oficial (`WAWebSendMsgCreateFanoutStanza`).
 Quando a investigação terminar, manter só o formato que o servidor aceita e remover o resto.
 
+## 6. Recado (about) por `<text_status>` no `GetUserInfo`
+
+- **Arquivos:** `user.go` (`GetUserInfo`, `parseUSyncAbout`) e `usync_about_test.go` (novo).
+- **Problema:** o `GetUserInfo` lia o recado só do protocolo usync `<status>`. O WhatsApp Web
+  2.3000.1055901559 removeu esse protocolo (`WAWebUsyncStatus`, `WAWebGetAboutQueryJob` e
+  `include_about_status` não existem mais) e lê o recado de `<text_status text="...">`
+  (`WAWebUsyncTextStatus`).
+- **Mudança:** a consulta pede `<status>` e `<text_status>`. O valor de `<status>` tem prioridade;
+  sem ele, vale o atributo `text` de `<text_status>`. Um `<text_status>` com `<error>` dá recado vazio.
+- **Não verificado:** a resposta do servidor a `<text_status>` não foi testada com uma conta real.
+
+## 7. Recibo de erro `integrity-drop`
+
+- **Arquivos:** `receipt.go` (`parseReceiptErrorType`), `types/presence.go` (`ReceiptTypeError`),
+  `types/events/events.go` (`Receipt.ErrorType`, `ReceiptErrorIntegrityDrop`, `IsIntegrityDrop`)
+  e `usync_about_test.go`.
+- **Problema:** o servidor avisa que descartou uma mensagem com
+  `<receipt type="error"><error type="integrity-drop"/></receipt>`. O hypermeow não lia o nó
+  `<error>`, e o wuzapi descartava o recibo. O cliente oficial marca a mensagem como falha
+  (`WAWebHandleMsgReceiptParser`, WhatsApp Web 2.3000.1055901559).
+- **Mudança:** `events.Receipt` leva `ErrorType` nos recibos `type="error"`. O wuzapi (`wmiau.go`)
+  envia o webhook `ReadReceipt` com `state: "Failed"` e `reason: "integrity-drop"`.
+
 ## Como atualizar a base
 
 1. Trocar o conteúdo desta pasta pela nova versão do fork.

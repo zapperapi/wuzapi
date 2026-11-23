@@ -1290,6 +1290,12 @@ func (mycli *MyClient) myEventHandler(rawEvt interface{}) {
 		} else if evt.Type == types.ReceiptTypeDelivered {
 			postmap["state"] = "Delivered"
 			log.Info().Str("id", evt.MessageIDs[0]).Str("source", evt.SourceString()).Str("timestamp", fmt.Sprintf("%v", evt.Timestamp)).Msg("Message delivered")
+		} else if evt.IsIntegrityDrop() {
+			// O servidor do WhatsApp descartou a mensagem (recibo de erro com
+			// <error type="integrity-drop">). O cliente oficial marca a mensagem como falha.
+			postmap["state"] = "Failed"
+			postmap["reason"] = evt.ErrorType
+			log.Warn().Strs("id", evt.MessageIDs).Str("source", evt.SourceString()).Str("timestamp", fmt.Sprintf("%v", evt.Timestamp)).Msg("Message dropped by WhatsApp integrity")
 		} else {
 			// Discard webhooks for inactive or other delivery types
 			return

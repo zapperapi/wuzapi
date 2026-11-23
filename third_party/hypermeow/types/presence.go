@@ -56,6 +56,9 @@ const (
 	ReceiptTypePlayedSelf ReceiptType = "played-self"
 
 	ReceiptTypeServerError ReceiptType = "server-error"
+	// ReceiptTypeError means the server refused the message. The reason is in
+	// the <error> child of the receipt (see events.Receipt.ErrorType).
+	ReceiptTypeError       ReceiptType = "error"
 	ReceiptTypeInactive    ReceiptType = "inactive"
 	ReceiptTypePeerMsg     ReceiptType = "peer_msg"
 	ReceiptTypeHistorySync ReceiptType = "hist_sync"
