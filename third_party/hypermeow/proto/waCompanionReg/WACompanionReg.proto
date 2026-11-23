@@ -29,6 +29,12 @@ message DeviceProps {
 		VR = 22;
 		CLOUD_API = 23;
 		SMARTGLASSES = 24;
+		WAIL = 25;
+		WASS = 26;
+		BUSINESS_BACK_OFFICE = 27;
+		WAIL_WAI = 28;
+		WAIL_ALEXA = 29;
+		AUTOMOTIVE = 30;
 	}
 
 	message HistorySyncConfig {
@@ -56,6 +62,9 @@ message DeviceProps {
 		optional bool supportHatchHistory = 22;
 		repeated string supportedBotChannelFbids = 23;
 		optional bool supportInlineContacts = 24;
+		optional bool supportNewsletter = 25;
+		optional bool supportUniversalReachChat = 26;
+		optional bool supportOmittedConversationMetadata = 28;
 	}
 
 	message AppVersion {
@@ -71,6 +80,7 @@ message DeviceProps {
 	optional PlatformType platformType = 3;
 	optional bool requireFullSync = 4;
 	optional HistorySyncConfig historySyncConfig = 5;
+	optional string deviceName = 6;
 }
 
 message CompanionEphemeralIdentity {
@@ -110,4 +120,8 @@ message ClientPairingProps {
 	optional bool isSyncdSnapshotRecoveryEnabled = 3;
 	optional bool isHsThumbnailSyncEnabled = 4;
 	optional bytes subscriptionSyncPayload = 5;
+	optional bool isBotJIDDbMigrated = 6;
+	optional bytes companionAddPeerPayload = 7;
+	optional bool isCompanionRegistrationFgsEnabled = 8;
+	optional bool isCompanionPairingProgressUiEnabled = 10;
 }

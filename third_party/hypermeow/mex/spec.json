@@ -1,6 +1,6 @@
 {
   "sourceRevision": "74509efe262b37b26bed05486c9f4160db5e841b",
-  "waVersion": "2.3000.1044776264",
+  "waVersion": "2.3000.1055901559",
   "operations": {
     "DeleteNewsletter": {
       "documentId": "30062808666639665",
@@ -18,27 +18,27 @@
       "responseDiscriminator": "xwa_checkout_get_order_info"
     },
     "QueryCatalog": {
-      "documentId": "30445081048424116",
+      "documentId": "29516483177936279",
       "kind": "query",
       "responseDiscriminator": "xwa_product_catalog_get_product_catalog"
     },
     "QueryCatalogProduct": {
-      "documentId": "9660926520672123",
+      "documentId": "28846496438335971",
       "kind": "query",
       "responseDiscriminator": "xwa_product_catalog_get_product"
     },
     "QueryProductCollections": {
-      "documentId": "9430970660362540",
+      "documentId": "29398139243143451",
       "kind": "query",
       "responseDiscriminator": "xwa_product_catalog_get_collections"
     },
     "QueryProductListCatalog": {
-      "documentId": "30125049463760630",
+      "documentId": "29053768057577183",
       "kind": "query",
       "responseDiscriminator": "xwa_product_catalog_get_product_list"
     },
     "QueryProductSingleCollection": {
-      "documentId": "9546992575408789",
+      "documentId": "40688642257401415",
       "kind": "query",
       "responseDiscriminator": "xwa_product_catalog_get_single_collection"
     }

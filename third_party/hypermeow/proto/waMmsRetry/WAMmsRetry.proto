@@ -18,4 +18,5 @@ message MediaRetryNotification {
 
 message ServerErrorReceipt {
 	optional string stanzaID = 1;
+	optional bool keepMediaKey = 2;
 }

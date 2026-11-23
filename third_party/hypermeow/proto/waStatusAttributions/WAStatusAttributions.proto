@@ -15,6 +15,9 @@ message StatusAttribution {
 		LAYOUTS = 8;
 		NEWSLETTER_STATUS = 9;
 		STATUS_CLOSE_SHARING = 10;
+		PAID_PARTNERSHIP = 11;
+		USERNAME_STATUS = 12;
+		STATUS_TEMPLATES = 13;
 	}
 
 	message AiCreatedAttribution {
@@ -51,6 +54,8 @@ message StatusAttribution {
 			SHARECHAT = 9;
 			GOOGLE_PHOTOS = 10;
 			SOUNDCLOUD = 11;
+			SHAZAM = 12;
+			PICSART = 13;
 		}
 
 		optional string actionURL = 1;
@@ -92,6 +97,12 @@ message StatusAttribution {
 		optional bool isExplicit = 6;
 	}
 
+	message StatusTemplate {
+		optional string templateID = 1;
+		optional string templateName = 2;
+		optional string thumbnailURL = 3;
+	}
+
 	oneof attributionData {
 		StatusReshare statusReshare = 3;
 		ExternalShare externalShare = 4;
@@ -99,6 +110,7 @@ message StatusAttribution {
 		GroupStatus groupStatus = 6;
 		RLAttribution rlAttribution = 7;
 		AiCreatedAttribution aiCreatedAttribution = 8;
+		StatusTemplate statusTemplate = 9;
 	}
 
 	optional Type type = 1;

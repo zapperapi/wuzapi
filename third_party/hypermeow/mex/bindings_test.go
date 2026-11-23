@@ -12,11 +12,11 @@ func TestCatalogBindingsMatchPinnedSpec(t *testing.T) {
 	}
 	tests := map[OperationName]string{
 		DeleteNewsletter:             "30062808666639665",
-		QueryCatalog:                 "30445081048424116",
-		QueryCatalogProduct:          "9660926520672123",
-		QueryProductCollections:      "9430970660362540",
-		QueryProductListCatalog:      "30125049463760630",
-		QueryProductSingleCollection: "9546992575408789",
+		QueryCatalog:                 "29516483177936279",
+		QueryCatalogProduct:          "28846496438335971",
+		QueryProductCollections:      "29398139243143451",
+		QueryProductListCatalog:      "29053768057577183",
+		QueryProductSingleCollection: "40688642257401415",
 		BizCreateOrder:               "26486627094287046",
 		BizQueryOrder:                "26593811266898374",
 	}

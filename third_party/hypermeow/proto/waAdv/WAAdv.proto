@@ -5,6 +5,7 @@ option go_package = "github.com/polymorfa/hypermeow/proto/waAdv";
 enum ADVEncryptionType {
 	E2EE = 0;
 	HOSTED = 1;
+	NON_E2EE = 2;
 }
 
 message ADVKeyIndexList {

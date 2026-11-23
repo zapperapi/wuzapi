@@ -89,6 +89,39 @@ Quando a investigação terminar, manter só o formato que o servidor aceita e r
 - **Mudança:** `events.Receipt` leva `ErrorType` nos recibos `type="error"`. O wuzapi (`wmiau.go`)
   envia o webhook `ReadReceipt` com `state: "Failed"` e `reason: "integrity-drop"`.
 
+## 10. Protobuf do WhatsApp Web 2.3000.1055901559
+
+- **Arquivos:** 18 `.proto` em `proto/`, os `.pb.go` correspondentes e `proto/protomerge.py` (novo).
+- **Problema:** os `.proto` do fork eram da revisão `1044834443`. Faltavam mensagens e campos que o
+  cliente oficial já usa.
+- **Mudança:** `protomerge.py` lê os módulos `*.pb.js` do bundle (cellar) sem executar o código e
+  mescla o resultado nos `.proto`. Os nomes que o fork já adaptou (`stanzaID`, `JID`, tipos de
+  `Message` no nível de cima) ficam iguais. Entraram 94 mensagens, 22 enums, 384 campos e 221 valores de enum.
+- **Removido ou alterado pelo bundle:**
+  - `Message.newsletterAdminProfileMessageV2` (campo 117) saiu.
+  - `ChatSolidColorWallpaper`: `colorLight` e `colorDark` (`string`) passaram a `backgroundLightArgb`
+    e `backgroundDarkArgb` (`fixed32`).
+  - `XmatMessengerMessageReminderSet` e `...Triggered`: `scheduledTime` passou de `int64` a `string`.
+  - `WAWebLabyrinthWaWasm`: as saídas (`*Output`) usam o `oneof result` com `success` e `error`.
+- **Sem módulo no bundle (intocados):** `waArmadilloICDC`, `waBotMetadata`, `waCommonParameterised`,
+  `waConsumerApplicationParameterised`, `waMultiDevice`, `waLidMigrationSyncPayload`, `waE2EGuest`
+  e `waWinUIApi`. `waReporting` é mantido à mão: recebe acréscimos, nunca remoções.
+- **Como repetir** (a partir de `proto/`, com `protoc` e `protoc-gen-go` v1.36.11 no `PATH`):
+  1. `python3 -I protomerge.py ~/.cellar/bundles/whatsapp-<revisão>/modules .` mostra o relatório.
+     Linhas com `!` pedem ajuste manual.
+  2. O mesmo comando com `--write` grava os `.proto`. Uma segunda execução não deve achar diferenças.
+  3. `protoc -I . --go_out=. --go_opt=paths=source_relative <arquivos alterados>` gera os `.pb.go`.
+  4. `go build ./... && go test ./...` aqui, e `go build ./...` no wuzapi.
+- **Versão anunciada:** `waVersion` em `store/clientpayload.go` passou de `2.3000.1044834443` a
+  `2.3000.1055901559`. A variável `WA_VERSION` do wuzapi tem prioridade sobre esse valor.
+- **MEX:** `waVersion` em `mex/spec.json` (e `WebVersion` em `mex/bindings.go`, gerado por
+  `go generate ./mex`) passou de `2.3000.1044776264` a `2.3000.1055901559`. Os IDs das cinco consultas
+  de catálogo foram trocados pelos do bundle (`WAWebQueryCatalogQuery`, `WAWebQueryCatalogProductQuery`,
+  `WAWebQueryProductCollectionsQuery`, `WAWebQueryProductListCatalogJobQuery` e
+  `WAWebQueryProductSingleCollectionQuery`). Entre os bundles `1053682356` e `1055901559` só o ID
+  mudou nessas consultas. `DeleteNewsletter`, `BizCreateOrder` e `BizQueryOrder` já tinham o ID atual.
+- **Não verificado:** as consultas de catálogo com os IDs novos não foram testadas com uma conta real.
+
 ## Como atualizar a base
 
 1. Trocar o conteúdo desta pasta pela nova versão do fork.

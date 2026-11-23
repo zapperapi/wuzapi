@@ -17,7 +17,7 @@ const (
 
 const SourceRevision = "74509efe262b37b26bed05486c9f4160db5e841b"
 
-const WebVersion = "2.3000.1044776264"
+const WebVersion = "2.3000.1055901559"
 
 const (
 	BizCreateOrder               OperationName = "BizCreateOrder"
@@ -41,11 +41,11 @@ var operations = map[OperationName]Operation{
 	BizCreateOrder:               {Name: BizCreateOrder, DocumentID: "26486627094287046", Kind: KindMutation, ResponseDiscriminator: "xwa_checkout_place_order"},
 	BizQueryOrder:                {Name: BizQueryOrder, DocumentID: "26593811266898374", Kind: KindQuery, ResponseDiscriminator: "xwa_checkout_get_order_info"},
 	DeleteNewsletter:             {Name: DeleteNewsletter, DocumentID: "30062808666639665", Kind: KindMutation, ResponseDiscriminator: "xwa2_newsletter_delete_v2"},
-	QueryCatalog:                 {Name: QueryCatalog, DocumentID: "30445081048424116", Kind: KindQuery, ResponseDiscriminator: "xwa_product_catalog_get_product_catalog"},
-	QueryCatalogProduct:          {Name: QueryCatalogProduct, DocumentID: "9660926520672123", Kind: KindQuery, ResponseDiscriminator: "xwa_product_catalog_get_product"},
-	QueryProductCollections:      {Name: QueryProductCollections, DocumentID: "9430970660362540", Kind: KindQuery, ResponseDiscriminator: "xwa_product_catalog_get_collections"},
-	QueryProductListCatalog:      {Name: QueryProductListCatalog, DocumentID: "30125049463760630", Kind: KindQuery, ResponseDiscriminator: "xwa_product_catalog_get_product_list"},
-	QueryProductSingleCollection: {Name: QueryProductSingleCollection, DocumentID: "9546992575408789", Kind: KindQuery, ResponseDiscriminator: "xwa_product_catalog_get_single_collection"},
+	QueryCatalog:                 {Name: QueryCatalog, DocumentID: "29516483177936279", Kind: KindQuery, ResponseDiscriminator: "xwa_product_catalog_get_product_catalog"},
+	QueryCatalogProduct:          {Name: QueryCatalogProduct, DocumentID: "28846496438335971", Kind: KindQuery, ResponseDiscriminator: "xwa_product_catalog_get_product"},
+	QueryProductCollections:      {Name: QueryProductCollections, DocumentID: "29398139243143451", Kind: KindQuery, ResponseDiscriminator: "xwa_product_catalog_get_collections"},
+	QueryProductListCatalog:      {Name: QueryProductListCatalog, DocumentID: "29053768057577183", Kind: KindQuery, ResponseDiscriminator: "xwa_product_catalog_get_product_list"},
+	QueryProductSingleCollection: {Name: QueryProductSingleCollection, DocumentID: "40688642257401415", Kind: KindQuery, ResponseDiscriminator: "xwa_product_catalog_get_single_collection"},
 }
 
 func Lookup(name OperationName) (Operation, bool) {

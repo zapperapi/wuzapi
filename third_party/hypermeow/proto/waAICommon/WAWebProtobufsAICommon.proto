@@ -54,6 +54,9 @@ enum BotMetricsEntryPoint {
 	CHATLIST_SEARCH = 55;
 	NEW_CHAT_LIST = 56;
 	CONTACTS_TAB = 57;
+	NEW_3P_AGENT_CREATION = 58;
+	SHARE = 59;
+	BIRTHDAY_BANNER = 60;
 }
 
 enum BotMetricsThreadEntryPoint {
@@ -341,6 +344,29 @@ message BotCapabilityMetadata {
 		AI_RICH_RESPONSE_ARTIFACTS_ENABLED = 67;
 		AI_RICH_RESPONSE_EMAIL_CALENDAR_ENABLED = 68;
 		AI_RICH_RESPONSE_REMINDERS_ENABLED = 69;
+		AI_STOP_GENERATION_ENABLED = 70;
+		AI_RICH_RESPONSE_3P_LINKING_CARD_ENABLED = 71;
+		HATCH_NOTIFICATION_METADATA_EVENT_ENABLED = 72;
+		AI_SUGGESTED_REPLIES_ENABLED = 73;
+		RICH_RESPONSE_IN_APP_SURVEY_BLOKS = 74;
+		RICH_RESPONSE_IMAGE_SOURCE_ATTRIBUTION = 75;
+		HATCH_CONNECTOR_ACTION_CARD_ENABLED = 76;
+		HATCH_SECURE_CREDENTIAL_CARD_ENABLED = 77;
+		HATCH_BROWSER_TASK_CARD_ENABLED = 78;
+		HATCH_ARTIFACT_CARD_ENABLED = 79;
+		AI_STUDY_CENTER_ENABLED = 80;
+		AI_MUSE_JARVIS_SCHEMA_ENABLED = 81;
+		AI_STUDY_QUIZ_ENABLED = 82;
+		HATCH_CVM_ENABLED = 83;
+		RICH_RESPONSE_SOCIAL_ENTITY_PREFETCH_SCHEDULER_ENABLED = 84;
+		AI_MUSE_JARVIS_EXTENDED_CARDS_ENABLED = 85;
+		AI_INTERJECTIONS_ENABLED = 86;
+		AI_RICH_RESPONSE_READ_ALOUD_ENABLED = 87;
+		AI_RICH_RESPONSE_ITEM_LISTS_ENABLED = 88;
+		RICH_RESPONSE_SIDE_BY_SIDE_BUFFER_BOTH = 89;
+		AI_MUSE_JARVIS_ENVELOPE_GZIP_ENABLED = 90;
+		AI_RICH_RESPONSE_INLINE_MEDIA_LIGHTBOX_ENABLED = 91;
+		AI_MUSE_JARVIS_PAYLOAD_GZIP_ENABLED = 93;
 	}
 
 	repeated BotCapabilityType capabilities = 1;
@@ -420,9 +446,11 @@ message BotSourcesMetadata {
 message BotMessageOrigin {
 	enum BotMessageOriginType {
 		BOT_MESSAGE_ORIGIN_TYPE_AI_INITIATED = 0;
+		BOT_MESSAGE_ORIGIN_TYPE_META_AI_THREAD_WELCOME = 1;
 	}
 
 	optional BotMessageOriginType type = 1;
+	optional string proactiveMessageCampaignID = 2;
 }
 
 message AIThreadInfo {
@@ -432,6 +460,7 @@ message AIThreadInfo {
 			DEFAULT = 1;
 			INCOGNITO = 2;
 			SIDE_CHAT = 3;
+			PRIVATE_SEARCH_CHAT = 4;
 		}
 
 		optional AIThreadType type = 1;
@@ -730,6 +759,7 @@ message HatchMetadataSync {
 
 message AIMetadataOperation {
 	optional HatchMetadataSync hatchMetadataSync = 1;
+	optional BizAIMetadataSync bizAiMetadataSync = 2;
 }
 
 message BotCommandMetadata {
@@ -745,6 +775,11 @@ message BotResolvedToolCallMetadata {
 
 message BotPttPromptMetadata {
 	optional string transcript = 1;
+}
+
+message BotInterjectionMetadata {
+	optional string targetPromptMessageID = 1;
+	repeated string foldedPromptMessageIDs = 2;
 }
 
 message BotMetadata {
@@ -790,6 +825,8 @@ message BotMetadata {
 	optional AISubscriptionUpsellMetadata subscriptionUpsellMetadata = 41;
 	optional BotPttPromptMetadata pttPromptMetadata = 42;
 	optional BotHistoryShareMetadata botHistoryShareMetadata = 43;
+	optional bool responseStoppedByUser = 44;
+	optional BotInterjectionMetadata interjectionMetadata = 45;
 	optional bytes internalMetadata = 999;
 }
 
@@ -827,6 +864,7 @@ message BotMessageSharingInfo {
 
 message AIRichResponseUnifiedResponse {
 	optional bytes data = 1;
+	optional bytes gzipData = 2;
 }
 
 message AIRegenerateMetadata {
@@ -857,4 +895,26 @@ message AIProvenance {
 
 	optional Metadata c2PaMetadata = 1;
 	optional Metadata iptcMetadata = 2;
+}
+
+message BizAIMetadataSync {
+	message ServerEvent {
+		enum ProtocolEvent {
+			UNSPECIFIED = 0;
+			AGENT_CHAT_READY = 1;
+		}
+
+		message AgentOnboardingStarted {
+			optional int64 composerBlockDurationSecs = 1;
+		}
+
+		oneof event {
+			ProtocolEvent protocolEvent = 1;
+			AgentOnboardingStarted agentOnboardingStarted = 2;
+		}
+	}
+
+	oneof operation {
+		ServerEvent serverEvent = 1;
+	}
 }
