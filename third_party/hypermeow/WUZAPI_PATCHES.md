@@ -363,9 +363,19 @@ Quando a investigação terminar, manter só o formato que o servidor aceita e r
   - Com qualquer outro erro do MEX (formato `argo`, plataforma sem o ID, erro 400, resposta
     incompleta), as duas funções registram um aviso e refazem a consulta pelo IQ antigo. No caso dos
     subgrupos, a resposta do IQ só preenche JID, nome e `IsDefaultSubGroup`.
-- **Não testado com conta real.** A sessão de teste local estava deslogada em 2026-11-23. Falta
-  confirmar o formato de `id` e de `creation_time` na resposta real (o parse aceita JID completo ou
-  só o usuário, e número ou string) e os códigos de erro do MEX para grupo.
+- **Evidência** (teste local com conta real, 2026-11-23, versão `2.3000.1055901559`):
+  - O servidor aceitou as duas consultas MEX. O log não teve nenhuma volta ao IQ.
+  - **Link:** a resposta foi `{"xwa2_group_query_by_id":{"__typename":"XWA2GroupRegularGroup",
+    "id":"…@g.us","invite_code":"…"}}`. Depois do reset pelo IQ set, a consulta MEX devolveu o código novo.
+  - **Subgrupos:** `__typename` `XWA2CommunityGroup`, com o grupo de avisos em `default_sub_group` e
+    o outro grupo em `sub_groups.edges`. O `id` vem com o JID completo e `creation_time` vem como
+    string (`"1774146242"`).
+  - **Grupo inexistente:** as duas consultas devolveram `data.xwa2_group_query_by_id: null` com o erro
+    `404 Not Found`, que virou `ErrGroupNotFound`.
+  - **Grupo comum em `GetCommunitySubGroups`:** a resposta veio com `__typename`
+    `XWA2GroupRegularGroup` e o erro "not a community".
+  - A sessão continuou conectada depois dos testes.
+- **Não testado:** o erro 401 (link pedido por quem não é administrador) e o 403 (conta fora do grupo).
 
 ## Como atualizar a base
 
