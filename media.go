@@ -7,7 +7,6 @@ import (
 	"path/filepath"
 	"time"
 
-	whatsmeow "github.com/polymorfa/hypermeow"
 	"github.com/rs/zerolog/log"
 )
 
@@ -24,22 +23,22 @@ type mediaS3Config struct {
 	MediaDelivery string
 }
 
+// processMedia baixa a mídia e põe no postmap o `s3` e/ou o `base64`, conforme
+// o MediaDelivery. Devolve o erro do download, para quem chamou decidir se pede
+// reupload; os outros erros (arquivo temporário, S3) ficam só no log.
 func (mycli *MyClient) processMedia(
-	msg whatsmeow.DownloadableMessage,
-	mimeType string,
-	fallbackExt string,
-	timeout time.Duration,
+	media receivedMedia,
 	isIncoming bool,
 	chatJID string,
 	messageID string,
 	s3cfg mediaS3Config,
 	postmap map[string]interface{},
-	extraKeys map[string]interface{},
-) {
+) error {
+	msg, mimeType, fallbackExt, timeout, extraKeys := media.msg, media.mimeType, media.ext, media.timeout, media.extra
 	tmpDir := filepath.Join("/tmp", "user_"+mycli.userID)
 	if err := os.MkdirAll(tmpDir, 0751); err != nil {
 		log.Error().Err(err).Msg("Could not create temporary directory")
-		return
+		return nil
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
@@ -48,7 +47,7 @@ func (mycli *MyClient) processMedia(
 	data, err := mycli.WAClient.Download(ctx, msg)
 	if err != nil {
 		log.Error().Err(err).Msg("Failed to download media")
-		return
+		return err
 	}
 
 	ext := fallbackExt
@@ -59,7 +58,7 @@ func (mycli *MyClient) processMedia(
 
 	if err := os.WriteFile(tmpPath, data, 0600); err != nil {
 		log.Error().Err(err).Msg("Failed to save media to temporary file")
-		return
+		return nil
 	}
 	defer func() {
 		if err := os.Remove(tmpPath); err != nil {
@@ -94,7 +93,7 @@ func (mycli *MyClient) processMedia(
 		b64, mime_, err := fileToBase64(tmpPath)
 		if err != nil {
 			log.Error().Err(err).Msg("Failed to convert media to base64")
-			return
+			return nil
 		}
 		postmap["base64"] = b64
 		postmap["mimeType"] = mime_
@@ -106,4 +105,5 @@ func (mycli *MyClient) processMedia(
 	}
 
 	log.Info().Str("path", tmpPath).Msg("Media processed")
+	return nil
 }

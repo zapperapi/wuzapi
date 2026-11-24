@@ -342,6 +342,7 @@ type Message struct {
 	IsLottieSticker       bool // True if the message was unwrapped from a LottieStickerMessage
 	IsBotInvoke           bool // True if the message was unwrapped from a BotInvokeMessage
 	IsEdit                bool // True if the message was unwrapped from an EditedMessage
+	IsAssociatedChild     bool // True if the message was unwrapped from an AssociatedChildMessage
 
 	// If this event was parsed from a WebMessageInfo (i.e. from a history sync or unavailable message request), the source data is here.
 	SourceWebMsg *waWeb.WebMessageInfo
@@ -416,6 +417,18 @@ func (evt *Message) UnwrapRaw() *Message {
 		evt.IsViewOnce = true
 		evt.IsViewOnceV2 = true
 		evt.IsViewOnceV2Extension = true
+	}
+	// Filho associado (versão HD, original ou vídeo de motion photo). O
+	// WhatsApp Web põe a mídia em associatedChildMessage.message e deixa o
+	// vínculo com a mensagem pai em messageContextInfo.messageAssociation, no
+	// nível de fora (WAWebE2EProtoGenerator, WAWebFutureproofProtoUtils).
+	if evt.Message.GetAssociatedChildMessage().GetMessage() != nil {
+		outerContext := evt.Message.GetMessageContextInfo()
+		evt.Message = evt.Message.GetAssociatedChildMessage().GetMessage()
+		if evt.Message.MessageContextInfo == nil {
+			evt.Message.MessageContextInfo = outerContext
+		}
+		evt.IsAssociatedChild = true
 	}
 	if evt.Message.GetLottieStickerMessage().GetMessage() != nil {
 		evt.Message = evt.Message.GetLottieStickerMessage().GetMessage()

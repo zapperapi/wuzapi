@@ -12,7 +12,6 @@ import (
 	"net/http"
 	"net/url"
 	"os"
-	"path/filepath"
 	"runtime/debug"
 	"strconv"
 	"strings"
@@ -1080,6 +1079,13 @@ func (mycli *MyClient) myEventHandler(rawEvt interface{}) {
 				}
 			}
 
+			// Versão HD, original, vídeo de motion photo ou item de álbum: o
+			// vínculo com a mensagem pai, já resolvido para quem recebe o webhook.
+			association := messageAssociationOf(evt.Message)
+			if association != nil {
+				postmap["association"] = association
+			}
+
 			if !*skipMedia {
 
 				isIncoming := !evt.Info.IsFromMe
@@ -1093,41 +1099,15 @@ func (mycli *MyClient) myEventHandler(rawEvt interface{}) {
 					MediaDelivery: s3Config.MediaDelivery,
 				}
 
-				if img := evt.Message.GetImageMessage(); img != nil {
-					mycli.processMedia(img, img.GetMimetype(), ".jpg",
-						downloadTimeoutImage, isIncoming, chatJID,
-						evt.Info.ID, s3cfg, postmap, nil)
-				}
-
-				if audio := evt.Message.GetAudioMessage(); audio != nil {
-					mycli.processMedia(audio, audio.GetMimetype(), ".ogg",
-						downloadTimeoutAudio, isIncoming, chatJID,
-						evt.Info.ID, s3cfg, postmap, nil)
-				}
-
-				if doc := evt.Message.GetDocumentMessage(); doc != nil {
-					ext := ".bin"
-					if doc.FileName != nil {
-						ext = filepath.Ext(*doc.FileName)
+				if media, ok := receivedMediaOf(evt.Message); ok {
+					err := mycli.processMedia(media, isIncoming, chatJID, evt.Info.ID, s3cfg, postmap)
+					// Mídia que saiu do servidor (404/410): o aparelho que enviou
+					// pode subir de novo. A mídia chega depois, no webhook
+					// MediaRetry; aqui só se avisa que ela está a caminho.
+					if isExpiredMediaError(err) &&
+						mycli.requestMediaReupload(&evt.Info, media, association, chatJID, isIncoming, s3cfg) {
+						postmap["mediaRetry"] = "requested"
 					}
-					mycli.processMedia(doc, doc.GetMimetype(), ext,
-						downloadTimeoutDocument, isIncoming, chatJID,
-						evt.Info.ID, s3cfg, postmap, nil)
-				}
-
-				if video := evt.Message.GetVideoMessage(); video != nil {
-					mycli.processMedia(video, video.GetMimetype(), ".mp4",
-						downloadTimeoutVideo, isIncoming, chatJID,
-						evt.Info.ID, s3cfg, postmap, nil)
-				}
-
-				if sticker := evt.Message.GetStickerMessage(); sticker != nil {
-					mycli.processMedia(sticker, sticker.GetMimetype(), ".webp",
-						downloadTimeoutSticker, isIncoming, chatJID,
-						evt.Info.ID, s3cfg, postmap, map[string]interface{}{
-							"isSticker":       true,
-							"stickerAnimated": sticker.GetIsAnimated(),
-						})
 				}
 			}
 
@@ -1165,7 +1145,15 @@ func (mycli *MyClient) myEventHandler(rawEvt interface{}) {
 				} else if img := evt.Message.GetImageMessage(); img != nil {
 					messageType = "image"
 					caption = img.GetCaption()
+				} else if img := evt.Message.GetInstantImageMessage(); img != nil {
+					messageType = "image"
+					caption = img.GetCaption()
 				} else if video := evt.Message.GetVideoMessage(); video != nil {
+					messageType = "video"
+					caption = video.GetCaption()
+				} else if video := evt.Message.GetPtvMessage(); video != nil {
+					messageType = "video"
+				} else if video := evt.Message.GetInstantVideoMessage(); video != nil {
 					messageType = "video"
 					caption = video.GetCaption()
 				} else if audio := evt.Message.GetAudioMessage(); audio != nil {
@@ -1672,9 +1660,9 @@ func (mycli *MyClient) myEventHandler(rawEvt interface{}) {
 		dowebhook = 1
 		log.Warn().Str("info", evt.Info.SourceString()).Msg("Undecryptable message received")
 	case *events.MediaRetry:
-		postmap["type"] = "MediaRetry"
-		dowebhook = 1
-		log.Info().Str("messageID", evt.MessageID).Msg("Media retry event")
+		// O webhook sai de handleMediaRetry, já com a mídia baixada; o evento
+		// cru é cifrado e não serve a quem recebe.
+		mycli.handleMediaRetry(evt)
 	case *events.GroupInfo:
 		postmap["type"] = "GroupInfo"
 		dowebhook = 1

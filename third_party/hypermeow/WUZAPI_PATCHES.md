@@ -320,6 +320,21 @@ Quando a investigação terminar, manter só o formato que o servidor aceita e r
   o post feito pelo celular do dono chegava com `IsFromMe = false`. Teste com conta real em 2026-11-23:
   o post do celular chegou com `IsFromMe = true`.
 
+## 15. Filho associado (`associatedChildMessage`)
+
+- **Arquivos:** `types/events/events.go` (`Message`, `UnwrapRaw`) e `types/events/unwrap_test.go`
+  (novo).
+- **Problema:** `UnwrapRaw` não desembrulhava `associatedChildMessage`. A versão HD de uma foto,
+  quando chega nesse invólucro, ficava sem mídia visível para quem trata `evt.Message`.
+- **Mudança:** `UnwrapRaw` desembrulha `associatedChildMessage.message` depois dos invólucros de
+  visualização única. O `messageContextInfo` de fora (com `messageAssociation`) passa para a mensagem
+  de dentro quando ela não tem um próprio. O campo novo `IsAssociatedChild` marca a mensagem.
+- **Evidência:** `WAWebE2EProtoGenerator` (função `$`) gera
+  `{associatedChildMessage: {message}, messageContextInfo}`, e `WAWebFutureproofProtoUtils` desembrulha
+  o campo. O Web só embrulha quando o ABProp `wa_web_wrap_associated_child_message_enabled` está ligado;
+  sem ele, o filho chega como `imageMessage` ou `videoMessage` comum, com o mesmo `messageAssociation`.
+- **Não testado com conta real.**
+
 ## Como atualizar a base
 
 1. Trocar o conteúdo desta pasta pela nova versão do fork.
