@@ -17,6 +17,15 @@ const (
 	GroupMemberAddModeAllMember GroupMemberAddMode = "all_member_add"
 )
 
+// GroupMemberShareGroupHistoryMode defines who can share the recent message history with new members.
+type GroupMemberShareGroupHistoryMode string
+
+const (
+	GroupMemberShareGroupHistoryModeAdmin             GroupMemberShareGroupHistoryMode = "admin_share"
+	GroupMemberShareGroupHistoryModeAllMember         GroupMemberShareGroupHistoryMode = "all_member_share"
+	GroupMemberShareGroupHistoryModeAllMemberToggleOn GroupMemberShareGroupHistoryMode = "all_member_share_toggle_on"
+)
+
 // GroupInfo contains basic information about a group chat on WhatsApp.
 type GroupInfo struct {
 	JID      JID

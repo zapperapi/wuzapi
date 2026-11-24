@@ -46,6 +46,9 @@ type ReqCreateGroup struct {
 	types.GroupLocked
 	types.GroupMembershipApprovalMode
 	MemberAddMode types.GroupMemberAddMode
+	// MemberShareGroupHistoryMode defaults to all_member_share, like the new group flow of WhatsApp Web.
+	// It is not sent when creating a community (IsParent), because WhatsApp Web does not send it there.
+	MemberShareGroupHistoryMode types.GroupMemberShareGroupHistoryMode
 	// Set IsParent to true to create a community instead of a normal group.
 	// When creating a community, the linked announcement group will be created automatically by the server.
 	types.GroupParent
@@ -57,12 +60,39 @@ type ReqCreateGroup struct {
 //
 // See ReqCreateGroup for parameters.
 func (cli *Client) CreateGroup(ctx context.Context, req ReqCreateGroup) (*types.GroupInfo, error) {
-	participantNodes := make([]waBinary.Node, len(req.Participants), len(req.Participants)+1)
-	// TODO member_share_group_history_mode
-	participantNodes = append(participantNodes, waBinary.Node{
+	createNode, err := cli.buildCreateGroupNode(ctx, req)
+	if err != nil {
+		return nil, err
+	}
+	resp, err := cli.sendGroupIQ(ctx, iqSet, types.GroupServerJID, createNode)
+	if err != nil {
+		return nil, err
+	}
+	groupNode, ok := resp.GetOptionalChildByTag("group")
+	if !ok {
+		return nil, &ElementMissingError{Tag: "group", In: "response to create group query"}
+	}
+	return cli.parseGroupNodeAndStoreUsernames(ctx, &groupNode)
+}
+
+// buildCreateGroupNode builds the <create> node in the child order of WhatsApp Web
+// (WASmaxGroupsCreateRPC): the mode mixins are merged in front of the participants,
+// and the optional flags follow them.
+func (cli *Client) buildCreateGroupNode(ctx context.Context, req ReqCreateGroup) (waBinary.Node, error) {
+	nodes := make([]waBinary.Node, 0, len(req.Participants)+8)
+	if !req.IsParent {
+		nodes = append(nodes, waBinary.Node{
+			Tag:     "member_share_group_history_mode",
+			Content: string(cmp.Or(req.MemberShareGroupHistoryMode, types.GroupMemberShareGroupHistoryModeAllMember)),
+		})
+	}
+	nodes = append(nodes, waBinary.Node{
 		Tag:     "member_add_mode",
 		Content: string(cmp.Or(req.MemberAddMode, types.GroupMemberAddModeAllMember)),
 	})
+	firstParticipant := len(nodes)
+	nodes = append(nodes, make([]waBinary.Node, len(req.Participants))...)
+	participantNodes := nodes[firstParticipant:]
 	for i, participant := range req.Participants {
 		participant = participant.ToNonAD()
 		var participantPN types.JID
@@ -70,7 +100,7 @@ func (cli *Client) CreateGroup(ctx context.Context, req ReqCreateGroup) (*types.
 			var err error
 			participantPN, err = cli.Store.LIDs.GetPNForLID(ctx, participant)
 			if err != nil {
-				return nil, fmt.Errorf("failed to get phone number for participant %s: %v", participant, err)
+				return waBinary.Node{}, fmt.Errorf("failed to get phone number for participant %s: %v", participant, err)
 			}
 		}
 		participantAttrs := waBinary.Attrs{"jid": participant}
@@ -83,7 +113,7 @@ func (cli *Client) CreateGroup(ctx context.Context, req ReqCreateGroup) (*types.
 		}
 		token, err := cli.ensureTCToken(ctx, participant)
 		if err != nil {
-			return nil, fmt.Errorf("failed to get privacy token for participant %s: %v", participant, err)
+			return waBinary.Node{}, fmt.Errorf("failed to get privacy token for participant %s: %v", participant, err)
 		} else if len(token) > 0 {
 			participantNodes[i].Content = []waBinary.Node{{
 				Tag:     "privacy",
@@ -91,30 +121,25 @@ func (cli *Client) CreateGroup(ctx context.Context, req ReqCreateGroup) (*types.
 			}}
 		}
 	}
+	if req.IsLocked {
+		nodes = append(nodes, waBinary.Node{Tag: "locked"})
+	}
+	if req.IsAnnounce {
+		nodes = append(nodes, waBinary.Node{Tag: "announcement"})
+	}
 	if req.IsParent {
 		if req.DefaultMembershipApprovalMode == "" {
 			req.DefaultMembershipApprovalMode = "request_required"
 		}
-		participantNodes = append(participantNodes, waBinary.Node{
+		nodes = append(nodes, waBinary.Node{
 			Tag: "parent",
 			Attrs: waBinary.Attrs{
 				"default_membership_approval_mode": req.DefaultMembershipApprovalMode,
 			},
 		})
-	} else if !req.LinkedParentJID.IsEmpty() {
-		participantNodes = append(participantNodes, waBinary.Node{
-			Tag:   "linked_parent",
-			Attrs: waBinary.Attrs{"jid": req.LinkedParentJID},
-		})
-	}
-	if req.IsLocked {
-		participantNodes = append(participantNodes, waBinary.Node{Tag: "locked"})
-	}
-	if req.IsAnnounce {
-		participantNodes = append(participantNodes, waBinary.Node{Tag: "announcement"})
 	}
 	if req.IsEphemeral {
-		participantNodes = append(participantNodes, waBinary.Node{
+		nodes = append(nodes, waBinary.Node{
 			Tag: "ephemeral",
 			Attrs: waBinary.Attrs{
 				"expiration": req.DisappearingTimer,
@@ -122,7 +147,7 @@ func (cli *Client) CreateGroup(ctx context.Context, req ReqCreateGroup) (*types.
 			},
 		})
 	} else {
-		participantNodes = append(participantNodes, waBinary.Node{
+		nodes = append(nodes, waBinary.Node{
 			Tag:   "ephemeral",
 			Attrs: waBinary.Attrs{"expiration": 0},
 		})
@@ -131,13 +156,19 @@ func (cli *Client) CreateGroup(ctx context.Context, req ReqCreateGroup) (*types.
 	if req.IsJoinApprovalRequired {
 		approvalState = "on"
 	}
-	participantNodes = append(participantNodes, waBinary.Node{
+	nodes = append(nodes, waBinary.Node{
 		Tag: "membership_approval_mode",
 		Content: []waBinary.Node{{
 			Tag:   "group_join",
 			Attrs: waBinary.Attrs{"state": approvalState},
 		}},
 	})
+	if !req.IsParent && !req.LinkedParentJID.IsEmpty() {
+		nodes = append(nodes, waBinary.Node{
+			Tag:   "linked_parent",
+			Attrs: waBinary.Attrs{"jid": req.LinkedParentJID},
+		})
+	}
 	createAttrs := waBinary.Attrs{}
 	if req.Name != "" {
 		createAttrs["subject"] = req.Name
@@ -145,19 +176,11 @@ func (cli *Client) CreateGroup(ctx context.Context, req ReqCreateGroup) (*types.
 	if req.CreateKey != "" {
 		createAttrs["create_key"] = strings.TrimPrefix(req.CreateKey, "3EB0")
 	}
-	resp, err := cli.sendGroupIQ(ctx, iqSet, types.GroupServerJID, waBinary.Node{
+	return waBinary.Node{
 		Tag:     "create",
 		Attrs:   createAttrs,
-		Content: participantNodes,
-	})
-	if err != nil {
-		return nil, err
-	}
-	groupNode, ok := resp.GetOptionalChildByTag("group")
-	if !ok {
-		return nil, &ElementMissingError{Tag: "group", In: "response to create group query"}
-	}
-	return cli.parseGroupNodeAndStoreUsernames(ctx, &groupNode)
+		Content: nodes,
+	}, nil
 }
 
 // UnlinkGroup removes a child group from a parent community.

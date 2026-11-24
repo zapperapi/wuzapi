@@ -147,6 +147,37 @@ Quando a investigação terminar, manter só o formato que o servidor aceita e r
 - **Não alterado:** o JID vai como telefone. O Web envia o LID quando a flag
   `wa_catalog_graphql_use_lid_enabled` está ligada; o servidor aceitou os dois formatos.
 
+## 12. Criação de grupo igual à do WhatsApp Web
+
+- **Arquivos:** `group.go` (`CreateGroup` e `buildCreateGroupNode`, nova), `types/group.go`
+  (`GroupMemberShareGroupHistoryMode`, novo) e `group_create_test.go` (novo).
+- **Problema:** o nó `<create>` não tinha `member_share_group_history_mode` (havia um `TODO`). Os
+  filhos também vinham numa ordem diferente da do cliente oficial.
+- **Referência** (bundle `1055901559`):
+  - `WAWebNewGroupFlow.react` começa com `memberShareGroupHistoryMode: true`.
+  - `WAWebGroupCreateJob` converte `true` em `all_member_share` e `false` em `admin_share`, e sempre
+    envia o campo.
+  - `WASmaxGroupsCreateRPC` põe os campos de modo na frente dos participantes, porque
+    `WASmaxMixins.mergeStanzas` coloca os filhos novos antes dos que já existem. Depois vêm
+    `locked`, `announcement`, `parent`, `ephemeral`, `membership_approval_mode` e `linked_parent`.
+  - `WAWebGroupCommunityJob` (criação de comunidade) não envia o campo.
+- **Mudança:**
+  - O grupo comum envia `<member_share_group_history_mode>all_member_share</...>`. O campo
+    `ReqCreateGroup.MemberShareGroupHistoryMode` troca esse valor.
+  - A comunidade (`IsParent`) não envia o campo.
+  - Os filhos seguem a ordem do Web.
+  - A montagem do nó ficou em `buildCreateGroupNode`, que os testes usam sem conexão.
+- **Não alterado:** a criação de comunidade ainda envia `member_add_mode`, `ephemeral` e
+  `membership_approval_mode`, e o Web não envia esses campos. Ela também põe
+  `default_membership_approval_mode="request_required"` em toda comunidade, e o Web só põe esse
+  atributo na comunidade fechada.
+- **Evidência** (teste local com conta real, 2026-11-23):
+  - `POST /group/create` criou o grupo com um participante.
+  - A notificação `w:gp2` de criação devolveu `member_share_group_history_mode` com
+    `all_member_share`.
+  - O participante com privacidade restrita voltou com `403` e um código de convite.
+  - A sessão continuou conectada depois da criação.
+
 ## Como atualizar a base
 
 1. Trocar o conteúdo desta pasta pela nova versão do fork.
