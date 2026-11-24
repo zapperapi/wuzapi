@@ -166,6 +166,20 @@ type GroupLinkTarget struct {
 	GroupIsDefaultSub
 }
 
+// CommunitySubGroup é um grupo de comunidade como a consulta MEX do WhatsApp Web devolve
+// (WAWebMexFetchAllSubgroupsJob).
+type CommunitySubGroup struct {
+	GroupLinkTarget
+	// IsGeneralChat marca o grupo geral da comunidade (properties.general_chat).
+	IsGeneralChat bool
+	// IsHidden marca o grupo oculto (properties.hidden_group).
+	IsHidden bool
+	// MembershipApprovalMode diz se entrar no grupo exige aprovação de um administrador.
+	MembershipApprovalMode bool
+	// HasMembershipRequest diz se a conta já tem um pedido de entrada pendente no grupo.
+	HasMembershipRequest bool
+}
+
 type GroupLinkChange struct {
 	Type         GroupLinkChangeType
 	UnlinkReason GroupUnlinkReason

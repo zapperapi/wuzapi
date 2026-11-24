@@ -335,6 +335,38 @@ Quando a investigação terminar, manter só o formato que o servidor aceita e r
   sem ele, o filho chega como `imageMessage` ou `videoMessage` comum, com o mesmo `messageAssociation`.
 - **Não testado com conta real.**
 
+## 16. Link de convite e subgrupos por MEX
+
+- **Arquivos:** `group_mex.go` (novo), `group_mex_test.go` (novo), `group.go` (`GetGroupInviteLink`,
+  `GetSubGroups` e `getSubGroupsIQ`, nova) e `types/group.go` (`CommunitySubGroup`, novo).
+- **Problema:** o WhatsApp Web 2.3000.1055901559 não usa mais o IQ get `<invite/>` para ler o link
+  de convite, nem o IQ `<sub_groups/>` para listar os grupos de uma comunidade. As duas consultas
+  passaram para MEX.
+- **Referência** (bundle `1055901559`):
+  - **Link:** `WAWebMexFetchGroupInviteCodeJob`, ID `29247029834912157`, variáveis
+    `{id, query_context: "INVITE_CODE"}`. A resposta é `xwa2_group_query_by_id.invite_code`.
+  - **Revogar:** `WAWebGroupInviteJob.resetGroupInviteCode` continua com o IQ set `<invite/>`.
+  - **Subgrupos:** `WAWebMexFetchAllSubgroupsJob`, ID `9935467776504344`, variáveis
+    `{group_id, query_context, sub_group_hint_id}`. `WAWebQuerySubGroupAction` usa
+    `query_context: "INTERACTIVE"` e não manda `sub_group_hint_id` quando não há grupo de referência.
+    A resposta traz `default_sub_group` (grupo de avisos) e `sub_groups.edges[].node`, com `id`,
+    `subject{value, creation_time}`, `properties{general_chat, hidden_group,
+    membership_approval_mode_enabled}` e `membership_approval_requests.total_count`.
+- **Mudança:**
+  - `GetGroupInviteLink` sem `reset` consulta por MEX. Com `reset`, continua no IQ set.
+  - `GetCommunitySubGroups` (nova) consulta por MEX e devolve `types.CommunitySubGroup`: o
+    `GroupLinkTarget` de antes, mais `IsGeneralChat`, `IsHidden`, `MembershipApprovalMode` e
+    `HasMembershipRequest`. O grupo de avisos vem primeiro, como no Web.
+  - `GetSubGroups` mantém a assinatura e passa a usar `GetCommunitySubGroups`.
+  - Os erros 401, 403 e 404 do MEX viram os mesmos erros do IQ (`ErrGroupInviteLinkUnauthorized` ou
+    `ErrIQNotAuthorized`, `ErrNotInGroup` e `ErrGroupNotFound`).
+  - Com qualquer outro erro do MEX (formato `argo`, plataforma sem o ID, erro 400, resposta
+    incompleta), as duas funções registram um aviso e refazem a consulta pelo IQ antigo. No caso dos
+    subgrupos, a resposta do IQ só preenche JID, nome e `IsDefaultSubGroup`.
+- **Não testado com conta real.** A sessão de teste local estava deslogada em 2026-11-23. Falta
+  confirmar o formato de `id` e de `creation_time` na resposta real (o parse aceita JID completo ou
+  só o usuário, e número ou string) e os códigos de erro do MEX para grupo.
+
 ## Como atualizar a base
 
 1. Trocar o conteúdo desta pasta pela nova versão do fork.

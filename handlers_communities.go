@@ -224,6 +224,8 @@ func (s *server) communityFromQuery(w http.ResponseWriter, r *http.Request) (typ
 }
 
 // GetCommunityGroups lists the groups of a community, the announcement group included.
+// Each item keeps JID, Name and IsDefaultSubGroup, and adds IsGeneralChat, IsHidden,
+// MembershipApprovalMode and HasMembershipRequest (filled only by the MEX query).
 func (s *server) GetCommunityGroups() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 
@@ -240,7 +242,7 @@ func (s *server) GetCommunityGroups() http.HandlerFunc {
 			return
 		}
 
-		groups, err := client.GetSubGroups(r.Context(), community)
+		groups, err := client.GetCommunitySubGroups(r.Context(), community)
 		if err != nil {
 			msg := fmt.Sprintf("failed to get community groups: %v", err)
 			log.Error().Msg(msg)

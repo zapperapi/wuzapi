@@ -466,7 +466,19 @@ func (cli *Client) SetGroupAnnounce(ctx context.Context, jid types.JID, announce
 func (cli *Client) GetGroupInviteLink(ctx context.Context, jid types.JID, reset bool) (string, error) {
 	iqType := iqGet
 	if reset {
+		// O WhatsApp Web ainda revoga o link pelo IQ set <invite/> (WAWebGroupInviteJob.resetGroupInviteCode).
 		iqType = iqSet
+	} else {
+		// A consulta do link atual passou para MEX (WAWebMexFetchGroupInviteCodeJob).
+		code, err := cli.fetchGroupInviteCodeMex(ctx, jid)
+		if err == nil {
+			return InviteLinkPrefix + code, nil
+		}
+		mapped, definitive := mapMexGroupError(err, ErrGroupInviteLinkUnauthorized)
+		if definitive || ctx.Err() != nil {
+			return "", mapped
+		}
+		cli.Log.Warnf("Failed to get invite code of %s via MEX, falling back to IQ: %v", jid, err)
 	}
 	resp, err := cli.sendGroupIQ(ctx, iqType, jid, waBinary.Node{Tag: "invite"})
 	if errors.Is(err, ErrIQNotAuthorized) {
@@ -625,7 +637,23 @@ func (cli *Client) GetJoinedGroups(ctx context.Context) ([]*types.GroupInfo, err
 }
 
 // GetSubGroups gets the subgroups of the given community.
+//
+// Usa a consulta MEX do WhatsApp Web, com o IQ <sub_groups/> como reserva. Ver GetCommunitySubGroups,
+// que também devolve as propriedades de cada grupo.
 func (cli *Client) GetSubGroups(ctx context.Context, community types.JID) ([]*types.GroupLinkTarget, error) {
+	groups, err := cli.GetCommunitySubGroups(ctx, community)
+	if err != nil {
+		return nil, err
+	}
+	targets := make([]*types.GroupLinkTarget, len(groups))
+	for i, group := range groups {
+		targets[i] = &group.GroupLinkTarget
+	}
+	return targets, nil
+}
+
+// getSubGroupsIQ é a consulta antiga, que o WhatsApp Web 2.3000.1055901559 não usa mais.
+func (cli *Client) getSubGroupsIQ(ctx context.Context, community types.JID) ([]*types.GroupLinkTarget, error) {
 	res, err := cli.sendGroupIQ(ctx, iqGet, community, waBinary.Node{Tag: "sub_groups"})
 	if err != nil {
 		return nil, err
