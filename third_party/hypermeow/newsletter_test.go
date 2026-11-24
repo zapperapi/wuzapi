@@ -6,6 +6,8 @@ import (
 	"reflect"
 	"testing"
 
+	waBinary "github.com/polymorfa/hypermeow/binary"
+	"github.com/polymorfa/hypermeow/store"
 	"github.com/polymorfa/hypermeow/types"
 )
 
@@ -254,5 +256,36 @@ func TestParseMexNotificationEventKeepsJoinAndLeave(t *testing.T) {
 	join, err := parseMexNotificationEvent([]byte(`{"data":{"xwa2_notify_newsletter_on_join":{"id":"120363144038483540@newsletter","state":{"type":"ACTIVE"}}}}`))
 	if err != nil || join.Join == nil || join.Join.ID.String() != "120363144038483540@newsletter" {
 		t.Fatalf("join = %#v, err = %v", join.Join, err)
+	}
+}
+
+// Stanzas recebidas no teste de 2026-11-23: o post feito pelo celular do dono
+// traz is_sender="true".
+func TestParseMessageSourceNewsletterIsSender(t *testing.T) {
+	own := types.NewJID("551231996580", types.DefaultUserServer)
+	client := &Client{Store: &store.Device{ID: &own}}
+	channel := types.NewJID("120363415307246687", types.NewsletterServer)
+
+	tests := map[string]struct {
+		attrs waBinary.Attrs
+		want  bool
+	}{
+		"own post":       {waBinary.Attrs{"from": channel, "id": "2A92F8A75757FEFE1E4B", "is_sender": "true", "server_id": "105", "t": "1795482255", "type": "text"}, true},
+		"follower view":  {waBinary.Attrs{"from": channel, "id": "2A92F8A75757FEFE1E4C", "server_id": "106", "t": "1795482255", "type": "text"}, false},
+		"explicit false": {waBinary.Attrs{"from": channel, "id": "2A92F8A75757FEFE1E4D", "is_sender": "false", "server_id": "107", "t": "1795482255", "type": "text"}, false},
+	}
+	for name, tc := range tests {
+		t.Run(name, func(t *testing.T) {
+			source, err := client.parseMessageSource(&waBinary.Node{Tag: "message", Attrs: tc.attrs}, false)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if source.IsFromMe != tc.want {
+				t.Errorf("IsFromMe = %t, want %t", source.IsFromMe, tc.want)
+			}
+			if source.Chat != channel || source.Sender != channel {
+				t.Errorf("chat = %v, sender = %v, want the channel", source.Chat, source.Sender)
+			}
+		})
 	}
 }

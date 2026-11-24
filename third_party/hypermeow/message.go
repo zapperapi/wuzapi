@@ -163,7 +163,10 @@ func (cli *Client) parseMessageSource(node *waBinary.Node, requireParticipant bo
 	} else if from.Server == types.NewsletterServer {
 		source.Chat = from
 		source.Sender = from
-		// TODO IsFromMe?
+		// is_sender="true" marca a mensagem publicada pela própria conta, de
+		// qualquer aparelho. O WhatsApp Web usa o atributo como fromMe
+		// (WAWebNewsletterMsgStanzaAdapters).
+		source.IsFromMe = ag.OptionalBool("is_sender")
 	} else if from.User == clientID.User || from.User == clientLID.User {
 		if from.Server == types.HostedServer {
 			from.Server = types.DefaultUserServer

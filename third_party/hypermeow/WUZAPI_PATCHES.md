@@ -315,8 +315,10 @@ Quando a investigação terminar, manter só o formato que o servidor aceita e r
   (`channels_quiz_sending_enabled`, a capacidade `QUESTIONS` do canal e
   `channels_question_sender_message_types_m1_enabled`). O canal de teste aceitou os dois; outros canais
   podem recusar.
-- **Recebimento:** o post feito pelo celular do dono chega como `events.Message` com `IsFromMe = false`,
-  embora a stanza traga `is_sender="true"`. O hypermeow não lê esse atributo.
+- **Recebimento:** `message.go` (`parseMessageSource`) marca `IsFromMe` com o atributo `is_sender` das
+  mensagens de canal, como o WhatsApp Web (`WAWebNewsletterMsgStanzaAdapters`: `fromMe: isSender`). Antes,
+  o post feito pelo celular do dono chegava com `IsFromMe = false`. Teste com conta real em 2026-11-23:
+  o post do celular chegou com `IsFromMe = true`.
 
 ## Como atualizar a base
 

@@ -2726,15 +2726,7 @@ func (s *server) SendMessage() http.HandlerFunc {
 		} else {
 			log.Info().Int64("elapsed_ms", time.Since(start).Milliseconds()).Msg("SendMessage: link preview desabilitado, montando mensagem")
 		}
-		msg := &waE2E.Message{
-			ExtendedTextMessage: &waE2E.ExtendedTextMessage{
-				Text:          proto.String(t.Body),
-				MatchedText:   proto.String(url),
-				Title:         proto.String(og.Title),
-				Description:   proto.String(og.Description),
-				JPEGThumbnail: og.ImageData,
-			},
-		}
+		msg := newTextMessage(t.Body, url, og)
 		// Upload the high-res thumbnail so clients render the large preview
 		// card; without these fields only the small inline thumbnail shows.
 		if len(og.HQImageData) > 0 {
@@ -2806,6 +2798,7 @@ func (s *server) SendMessage() http.HandlerFunc {
 			}
 			msg.ExtendedTextMessage.ContextInfo.IsForwarded = proto.Bool(true)
 		}
+		msg = simplifyTextMessage(msg)
 		log.Info().Int64("elapsed_ms", time.Since(start).Milliseconds()).Str("msgid", msgid).Msg("SendMessage: chamando whatsmeow.SendMessage")
 		sendStart := time.Now()
 		textExtra := whatsmeow.SendRequestExtra{ID: msgid}
