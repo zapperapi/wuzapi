@@ -1613,7 +1613,14 @@ func (mycli *MyClient) myEventHandler(rawEvt interface{}) {
 		}
 
 	case *events.AppState:
-		log.Info().Str("index", fmt.Sprintf("%+v", evt.Index)).Str("actionValue", fmt.Sprintf("%+v", evt.SyncActionValue)).Msg("App state event received")
+		// O valor da ação traz nome de contato, texto de resposta rápida e
+		// etiquetas: fica fora do log. Os eventos específicos (Contact, Pin,
+		// LabelEdit...) saem por webhook nos cases abaixo.
+		action := ""
+		if len(evt.Index) > 0 {
+			action = evt.Index[0]
+		}
+		log.Debug().Str("action", action).Msg("App state event received")
 	case *events.LoggedOut:
 		postmap["type"] = "LoggedOut"
 		dowebhook = 1
@@ -1753,23 +1760,89 @@ func (mycli *MyClient) myEventHandler(rawEvt interface{}) {
 		dowebhook = 1
 		log.Info().Str("info", evt.Info.SourceString()).Msg("Facebook message received")
 	case *events.Mute:
+		if evt.FromFullSync {
+			break
+		}
 		postmap["type"] = "Mute"
 		dowebhook = 1
 		log.Info().Str("jid", evt.JID.String()).Msg("Chat mute updated")
 	case *events.Archive:
+		if evt.FromFullSync {
+			break
+		}
 		postmap["type"] = "Archive"
 		dowebhook = 1
 		log.Info().Str("jid", evt.JID.String()).Msg("Chat archive updated")
 	case *events.DeleteChat:
+		if evt.FromFullSync {
+			break
+		}
 		postmap["type"] = "DeleteChat"
 		dowebhook = 1
 		log.Info().Str("jid", evt.JID.String()).Msg("Chat deleted")
 	case *events.MarkChatAsRead:
+		if evt.FromFullSync {
+			break
+		}
 		postmap["type"] = "MarkChatAsRead"
 		dowebhook = 1
 		log.Info().Str("jid", evt.JID.String()).Msg("Chat marked as read")
+	case *events.Contact, *events.LIDContact:
+		// A sincronização completa (pareamento, recuperação) emite um evento
+		// por contato da agenda e por conversa. Ela descreve o estado inicial,
+		// não uma mudança: só a mudança feita em outro aparelho vira webhook.
+		// Vale para todos os eventos de app-state abaixo.
+		if appStateFromFullSync(evt) {
+			break
+		}
+		postmap["type"] = eventTypeName(evt)
+		dowebhook = 1
+		log.Debug().Str("type", postmap["type"].(string)).Msg("Contact updated")
+	case *events.Pin, *events.Star, *events.DeleteForMe, *events.ClearChat,
+		*events.UnarchiveChatsSetting, *events.UserStatusMute,
+		*events.LabelEdit, *events.LabelAssociationChat, *events.LabelAssociationMessage,
+		*events.QuickReply:
+		if appStateFromFullSync(evt) {
+			break
+		}
+		postmap["type"] = eventTypeName(evt)
+		dowebhook = 1
+		log.Debug().Str("type", postmap["type"].(string)).Msg("App state action")
+	case *events.PushName, *events.BusinessName:
+		postmap["type"] = eventTypeName(evt)
+		dowebhook = 1
+		log.Debug().Str("type", postmap["type"].(string)).Msg("Contact name changed")
+	case *events.CallPreAccept, *events.CallTransport, *events.CallReject, *events.UnknownCallEvent:
+		postmap["type"] = eventTypeName(evt)
+		dowebhook = 1
+		log.Debug().Str("type", postmap["type"].(string)).Msg("Call event")
+	case *events.NotifyAccountReachoutTimelock:
+		postmap["type"] = "NotifyAccountReachoutTimelock"
+		dowebhook = 1
+		log.Warn().
+			Str("enforcementType", evt.EnforcementType).
+			Bool("active", evt.IsActive).
+			Time("endsAt", evt.TimeEnforcementEnds.Time).
+			Msg("Account reachout timelock")
+	case *events.QRScannedWithoutMultidevice:
+		postmap["type"] = "QRScannedWithoutMultidevice"
+		dowebhook = 1
+		log.Warn().Msg("QR code scanned by a phone without multidevice")
+	case *events.AppStateSyncError:
+		log.Warn().Err(evt.Error).Str("name", string(evt.Name)).Bool("fullSync", evt.FullSync).Msg("App state sync failed")
+	case *events.CATRefreshError:
+		log.Warn().Err(evt.Error).Msg("CAT refresh failed")
+	case *events.MediaRetryError:
+		log.Warn().Int("code", evt.Code).Msg("Media retry failed")
+	case *events.PairPasskeyRequest, *events.PairPasskeyError, *events.PairPasskeyConfirmation,
+		*events.ManualLoginReconnect, *events.UndecryptedMessage,
+		*events.NewsletterMessageMeta, *events.MexNotificationData:
+		// Sem uso no wuzapi: o pareamento é por QR ou código, o Signal fica
+		// ligado e a edição de canal já chega no evento Message.
+		log.Debug().Str("type", eventTypeName(evt)).Msg("Event ignored")
 	default:
-		log.Warn().Str("type", fmt.Sprintf("%T", evt)).Str("event", fmt.Sprintf("%+v", evt)).Msg("Unhandled event")
+		// Só o tipo: o conteúdo do evento pode trazer dados pessoais.
+		log.Debug().Str("type", eventTypeName(evt)).Msg("Unhandled event")
 	}
 
 	if dowebhook == 1 {

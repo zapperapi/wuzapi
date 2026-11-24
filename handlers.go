@@ -1441,6 +1441,8 @@ func (s *server) SendImage() http.HandlerFunc {
 			msg.ImageMessage.ContextInfo.MentionedJID = t.ContextInfo.MentionedJID
 		}
 
+		applyExpiration(&msg.ImageMessage.ContextInfo, t.ContextInfo.Expiration)
+
 		if t.ContextInfo.IsForwarded != nil && *t.ContextInfo.IsForwarded {
 			if msg.ImageMessage.ContextInfo == nil {
 				msg.ImageMessage.ContextInfo = &waE2E.ContextInfo{}
@@ -2661,6 +2663,9 @@ func (s *server) SendMessage() http.HandlerFunc {
 		QuotedText    string         `json:"QuotedText,omitempty"`
 		QuotedMessage *waE2E.Message `json:"QuotedMessage,omitempty"`
 		GroupStatus   bool           `json:"GroupStatus,omitempty"`
+		// MentionAll menciona todos os participantes do grupo e substitui
+		// ContextInfo.MentionedJID. Fora de grupo é ignorado.
+		MentionAll bool `json:"MentionAll,omitempty"`
 	}
 	return func(w http.ResponseWriter, r *http.Request) {
 		start := time.Now()
@@ -2777,6 +2782,24 @@ func (s *server) SendMessage() http.HandlerFunc {
 			}
 			msg.ExtendedTextMessage.ContextInfo.MentionedJID = t.ContextInfo.MentionedJID
 		}
+		if t.MentionAll && recipient.Server == types.GroupServer {
+			client := clientManager.GetWhatsmeowClient(txtid)
+			groupInfo, err := client.GetGroupInfo(r.Context(), recipient)
+			if err != nil {
+				s.Respond(w, r, http.StatusInternalServerError, fmt.Errorf("failed to get group participants for MentionAll: %w", err))
+				return
+			}
+			var own []types.JID
+			if client.Store.ID != nil {
+				own = append(own, *client.Store.ID)
+			}
+			own = append(own, client.Store.GetLID())
+			if msg.ExtendedTextMessage.ContextInfo == nil {
+				msg.ExtendedTextMessage.ContextInfo = &waE2E.ContextInfo{}
+			}
+			msg.ExtendedTextMessage.ContextInfo.MentionedJID = mentionAllJIDs(groupInfo, own...)
+		}
+		applyExpiration(&msg.ExtendedTextMessage.ContextInfo, t.ContextInfo.Expiration)
 		if t.ContextInfo.IsForwarded != nil && *t.ContextInfo.IsForwarded {
 			if msg.ExtendedTextMessage.ContextInfo == nil {
 				msg.ExtendedTextMessage.ContextInfo = &waE2E.ContextInfo{}
