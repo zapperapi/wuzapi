@@ -4280,6 +4280,9 @@ func (s *server) React() http.HandlerFunc {
 		Body        string
 		Id          string
 		Participant string
+		// ServerID is the server id of the channel message. Required when
+		// Phone is a channel (@newsletter).
+		ServerID int
 	}
 
 	return func(w http.ResponseWriter, r *http.Request) {
@@ -4333,6 +4336,13 @@ func (s *server) React() http.HandlerFunc {
 		reaction := t.Body
 		if reaction == "remove" {
 			reaction = ""
+		}
+
+		// Canal: a reação não é uma mensagem cifrada, e a mensagem alvo é
+		// identificada pelo id de servidor.
+		if isNewsletterJID(recipient) {
+			s.reactToNewsletter(w, r, clientManager.GetWhatsmeowClient(txtid), recipient, t.ServerID, reaction, msgid)
+			return
 		}
 
 		var participantJID types.JID

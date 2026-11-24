@@ -11,6 +11,7 @@ import (
 	"encoding/json"
 	"errors"
 	"slices"
+	"strings"
 	"time"
 
 	"google.golang.org/protobuf/proto"
@@ -446,10 +447,41 @@ type newsletterEvent struct {
 	Join       *events.NewsletterJoin       `json:"xwa2_notify_newsletter_on_join"`
 	Leave      *events.NewsletterLeave      `json:"xwa2_notify_newsletter_on_leave"`
 	MuteChange *events.NewsletterMuteChange `json:"xwa2_notify_newsletter_on_mute_change"`
+	// O servidor atual avisa a mudança de silenciar por este evento, e não mais
+	// por _on_mute_change (WAWebMexNewsletterUserSettingChangeHandler).
+	UserSettingChange *newsletterUserSettingChange `json:"xwa2_notify_newsletter_on_user_setting_change"`
 	// _on_admin_metadata_update -> id, thread_metadata, messages
 	// _on_metadata_update
 	// _on_state_change -> id, is_requestor, state
 	NotifyAccountReachoutTimelock *events.NotifyAccountReachoutTimelock `json:"xwa2_notify_account_reachout_timelock"`
+}
+
+type newsletterUserSettingChange struct {
+	ID      types.JID                   `json:"id"`
+	Setting types.NewsletterUserSetting `json:"setting"`
+}
+
+// muteChange converte a mudança de configuração no evento NewsletterMuteChange.
+// Só MUTE_ADMIN_ACTIVITY é o silenciar do canal; as outras configurações não
+// têm evento.
+func (change *newsletterUserSettingChange) muteChange() *events.NewsletterMuteChange {
+	if change.Setting.Type != types.NewsletterUserSettingMuteAdminActivity {
+		return nil
+	}
+	return &events.NewsletterMuteChange{
+		ID:   change.ID,
+		Mute: types.NewsletterMuteState(strings.ToLower(change.Setting.Value)),
+	}
+}
+
+// parseMexNotificationEvent lê o conteúdo de um <update> de notificação MEX.
+func parseMexNotificationEvent(data []byte) (newsletterEvent, error) {
+	var wrapper newsLetterEventWrapper
+	err := json.Unmarshal(data, &wrapper)
+	if err == nil && wrapper.Data.MuteChange == nil && wrapper.Data.UserSettingChange != nil {
+		wrapper.Data.MuteChange = wrapper.Data.UserSettingChange.muteChange()
+	}
+	return wrapper.Data, err
 }
 
 func (cli *Client) handleMexNotification(ctx context.Context, node *waBinary.Node) {
@@ -466,7 +498,8 @@ func (cli *Client) handleMexNotification(ctx context.Context, node *waBinary.Nod
 			continue
 		}
 		var wrapper newsLetterEventWrapper
-		err := json.Unmarshal(childData, &wrapper)
+		var err error
+		wrapper.Data, err = parseMexNotificationEvent(childData)
 		if err != nil {
 			cli.Log.Errorf("Failed to unmarshal JSON in mex event: %v", err)
 			continue

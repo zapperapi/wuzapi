@@ -104,9 +104,49 @@ type NewsletterMetadata struct {
 	ViewerMeta *NewsletterViewerMetadata `json:"viewer_metadata"`
 }
 
+// Tipos e valores de XWA2NewsletterUserSetting (viewer_metadata.settings).
+const (
+	// NewsletterUserSettingMuteAdminActivity silencia as atualizações do canal.
+	// É a configuração que o WhatsApp Web grava em muteExpiration do chat.
+	NewsletterUserSettingMuteAdminActivity = "MUTE_ADMIN_ACTIVITY"
+	// NewsletterUserSettingMuteFollowerActivity silencia, para o admin, os avisos
+	// de atividade dos seguidores.
+	NewsletterUserSettingMuteFollowerActivity = "MUTE_FOLLOWER_ACTIVITY"
+
+	NewsletterUserSettingValueOn  = "ON"
+	NewsletterUserSettingValueOff = "OFF"
+)
+
+type NewsletterUserSetting struct {
+	Type  string `json:"type"`
+	Value string `json:"value"`
+}
+
 type NewsletterViewerMetadata struct {
-	Mute NewsletterMuteState `json:"mute"`
-	Role NewsletterRole      `json:"role"`
+	Mute     NewsletterMuteState     `json:"mute"`
+	Role     NewsletterRole          `json:"role"`
+	Settings []NewsletterUserSetting `json:"settings,omitempty"`
+}
+
+// UnmarshalJSON preenche Mute a partir de settings. As consultas atuais não
+// devolvem mais o campo "mute": o estado vem em settings, no item
+// MUTE_ADMIN_ACTIVITY.
+func (nvm *NewsletterViewerMetadata) UnmarshalJSON(data []byte) error {
+	type plain NewsletterViewerMetadata
+	var decoded plain
+	if err := json.Unmarshal(data, &decoded); err != nil {
+		return err
+	}
+	if decoded.Mute == "" {
+		for _, setting := range decoded.Settings {
+			if setting.Type == NewsletterUserSettingMuteAdminActivity {
+				decoded.Mute = NewsletterMuteState(bytes.ToLower([]byte(setting.Value)))
+				break
+			}
+		}
+	}
+	*nvm = NewsletterViewerMetadata(decoded)
+	return nil
 }
 
 type NewsletterKeyType string
@@ -127,6 +167,7 @@ type NewsletterSettings struct {
 type NewsletterThreadMetadata struct {
 	CreationTime      jsontime.UnixString         `json:"creation_time"`
 	InviteCode        string                      `json:"invite"`
+	Handle            string                      `json:"handle,omitempty"`
 	Name              NewsletterText              `json:"name"`
 	Description       NewsletterText              `json:"description"`
 	SubscriberCount   int                         `json:"subscribers_count,string"`

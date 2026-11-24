@@ -89,6 +89,71 @@ Quando a investigação terminar, manter só o formato que o servidor aceita e r
 - **Mudança:** `events.Receipt` leva `ErrorType` nos recibos `type="error"`. O wuzapi (`wmiau.go`)
   envia o webhook `ReadReceipt` com `state: "Failed"` e `reason: "integrity-drop"`.
 
+## 8. Status em grupo (`is_group_status`)
+
+- **Arquivos:** `types/message.go` (`MsgMetaInfo.IsGroupStatus`) e `send.go` (`SendMessage`).
+- **Problema:** não havia como marcar uma mensagem de grupo como status do grupo.
+- **Evidência** (teste local, 2026-11-23): com `groupStatusMessageV2` e `<meta is_group_status="true">`,
+  o servidor respondeu com `ack is_group_status="true"`, e o status apareceu no celular de um participante.
+- **Mudança:** com `Meta.IsGroupStatus`, o nó `<meta>` leva `is_group_status="true"`. Quem chama
+  embrulha a mensagem em `GroupStatusMessageV2` (no wuzapi, `handlers_groupstatus.go`).
+
+## 9. IDs e formatos MEX de canal
+
+- **Arquivos:** `newsletter.go`, `types/newsletter.go`, `newsletter_test.go` (novo) e
+  `types/newsletter_test.go` (novo).
+- **Problema:** as consultas de canal usavam IDs que não existem mais no WhatsApp Web
+  (2.3000.1053682356 e 2.3000.1055901559), e três formatos eram diferentes dos atuais.
+- **Mudança nos IDs** (módulos `WAWebMex*Newsletter*.graphql`):
+
+  | Operação | ID anterior | ID atual |
+  |---|---|---|
+  | Consultar canal | `6563316087068696` | `27456920720571478` |
+  | Consultar canal, resumido | `7272540469429201` | `26944199458535748` |
+  | Listar inscritos | `6388546374527196` | `25399611239711790` |
+  | Criar | `6234210096708695` | `25149874324715067` |
+  | Seguir | `9926858900719341` | `24404358912487870` |
+  | Deixar de seguir | `6392786840836363` | `9767147403369991` |
+  | Atualizar | `7150902998257522` | `24250201037901610` |
+  | Silenciar e reativar | `6274038279359549` e `6068417879924485` | `31938993655691868` (uma mutation só) |
+  | Seguidores | `9800646650009898` | `27472091235714801` |
+  | Recomendados | `7263823273662354` | `25806748772361516` |
+  | Diretório | `6190824427689257` | `26125047313831973` |
+
+- **Mudança nos formatos:**
+  - **Criar:** a variável passou de `newsletter_input` para `input` (`WAWebMexCreateNewsletterJob`).
+  - **Silenciar:** `NewsletterToggleMute` usa `xwa2_newsletter_update_user_setting`, com
+    `input{newsletter_id, type: "MUTE_ADMIN_ACTIVITY", value: "ON"|"OFF"}`. `MUTE_ADMIN_ACTIVITY` é a
+    configuração que o Web grava no `muteExpiration` do chat (`WAWebNewsletterUpdateUserSettingJob`).
+  - **Consultar:** as variáveis levam `input.view_role` (`GUEST` por padrão), `fetch_wamo_sub`,
+    `fetch_status_metadata` e `fetch_pinned_messages`. `fetch_full_image` só vai `true` na consulta por JID.
+  - **Listar:** as variáveis levam `fetch_wamo_sub` e `fetch_status_metadata`, as duas `false`.
+  - **Seguir, sair e silenciar:** a resposta é lida. O estado `DELETED` ou `NON_EXISTING` devolve
+    `ErrNewsletterNotFound`, e `SUSPENDED` devolve `ErrNewsletterSuspended` (`WAWebMexJoinNewsletterJob`).
+- **Função nova:** `UpdateNewsletter` altera nome, descrição e foto com `xwa2_newsletter_update`. Só os
+  campos editados entram em `updates`; a foto vai em base64, e uma string vazia remove a descrição ou a
+  foto (`WAWebNewsletterMetadataQueryJob`).
+- **Mudança nos tipos:** as consultas atuais não devolvem `viewer_metadata.mute`. O estado vem em
+  `viewer_metadata.settings`. `NewsletterViewerMetadata` ganhou `Settings` e preenche `Mute` a partir
+  do item `MUTE_ADMIN_ACTIVITY`. `NewsletterThreadMetadata` ganhou `Handle`.
+- **Não alterado:** os IDs da variante desktop (`*Desktop`). O bundle do Web não permite conferi-los, e o
+  wuzapi usa o payload de navegador. Silenciar não tem ID de desktop e devolve erro nessa variante.
+- **Evidência** (teste local com conta real, 2026-11-23, versão `2.3000.1055901559`): o servidor aceitou
+  listar, consultar por JID e por convite, silenciar e reativar, seguir e sair, criar, apagar e atualizar
+  (nome, descrição, foto e remoção de foto). Seguir um canal inexistente devolveu o estado `NON_EXISTING`.
+- **Observado no teste:**
+  - O servidor ainda aceita o ID antigo de listar (`6388546374527196`), e nele `viewer_metadata` traz `mute`.
+  - Consultar por JID um canal que a conta não segue devolve o erro 405 `Not Allowed`. A consulta por
+    convite funciona nesse caso.
+  - O papel real (`owner`, `subscriber`) vem em `viewer_metadata.role` mesmo com `view_role: "GUEST"`.
+  - A foto precisa ser JPEG quadrado. Um JPEG de 1000x500 devolveu o erro 400 `Bad Request`.
+- **Evento de silenciar:** o servidor avisa a mudança por `xwa2_notify_newsletter_on_user_setting_change`
+  (visto no teste de 2026-11-23), e não mais por `_on_mute_change`. `notification.go` converte o aviso de
+  `MUTE_ADMIN_ACTIVITY` em `events.NewsletterMuteChange`; antes o evento nunca era emitido.
+- **Não verificado:** seguidores, recomendados e diretório. Os IDs foram trocados, mas a
+  biblioteca não tem função que os use.
+  O evento `NewsletterMuteChange` vindo do aviso novo foi testado só com o JSON capturado, não ao vivo.
+
 ## 10. Protobuf do WhatsApp Web 2.3000.1055901559
 
 - **Arquivos:** 18 `.proto` em `proto/`, os `.pb.go` correspondentes e `proto/protomerge.py` (novo).
@@ -177,6 +242,81 @@ Quando a investigação terminar, manter só o formato que o servidor aceita e r
     `all_member_share`.
   - O participante com privacidade restrita voltou com `403` e um código de convite.
   - A sessão continuou conectada depois da criação.
+
+## 13. Administração de canal
+
+- **Arquivos:** `newsletter_admin.go` (novo), `types/newsletter_admin.go` (novo) e
+  `newsletter_admin_test.go` (novo).
+- **Problema:** a biblioteca não tinha as operações de dono e administrador de canal.
+- **Mudança:** funções novas, com os IDs e as variáveis dos módulos `WAWebMex*Newsletter*` do
+  WhatsApp Web 2.3000.1055901559:
+
+  | Função | Operação do Web | ID |
+  |---|---|---|
+  | `GetNewsletterFollowers` | `WAWebMexFetchNewsletterFollowersJobQuery` | `27472091235714801` |
+  | `GetNewsletterAdminCount` | `WAWebMexFetchNewsletterAdminInfoJobQuery` | `26278439461859188` |
+  | `GetNewsletterPendingAdminInvites` | `WAWebMexFetchNewsletterPendingInvitesJobQuery` | `28049623068067370` |
+  | `CreateNewsletterAdminInvite` | `WAWebMexCreateNewsletterAdminInviteJobMutation` | `9387141988078609` |
+  | `RevokeNewsletterAdminInvite` | `WAWebMexRevokeNewsletterAdminInviteJobMutation` | `9656078347839416` |
+  | `AcceptNewsletterAdminInvite` | `WAWebMexAcceptNewsletterAdminInviteJobMutation` | `9580828702035549` |
+  | `DemoteNewsletterAdmin` | `WAWebMexDemoteNewsletterAdminJobMutation` | `9880997548630971` |
+  | `ChangeNewsletterOwner` | `WAWebMexChangeNewsletterOwnerJobMutation` | `9546742745432473` |
+  | `PinNewsletterMessages` | `WAWebMexNewsletterPinMessagesJobMutation` | `27165709459706559` |
+  | `UnpinNewsletterMessages` | `WAWebMexNewsletterUnpinMessagesJobMutation` | `28007176042216937` |
+  | `GetNewsletterInsights` | `WAWebMexFetchNewsletterInsightsJobQuery` | `9853618868050977` |
+
+- **Formatos:**
+  - As operações sobre um usuário levam `user_id` com o LID (`WAWebLidMigrationUtils.toUserLidOrThrow`).
+    Um JID de telefone devolve `ErrNewsletterUserNotLID`.
+  - Fixar e desafixar levam `input.message_ids` com os ids de servidor como string
+    (`WAWebNewsletterPinMessageAction`).
+  - Os insights levam uma lista de métricas `{id, type, group_by, surface}`. O `id` é de quem pede e
+    volta no resultado (`WAWebNewsletterInsight*Processors`).
+  - `BuildNewsletterAdminInvite` monta a mensagem `newsletterAdminInviteMessage`, que os clientes
+    enviam ao convidado depois de criar o convite (`WAWebNewsletterSendMsgAction`).
+- **Evidência** (teste local com conta real, 2026-11-23, versão `2.3000.1055901559`): o servidor aceitou
+  fixar e desafixar (`expiry_ts` 30 dias depois da publicação, e os outros aparelhos recebem
+  `xwa2_notify_newsletter_on_metadata_update` com `pinned_messages`), listar seguidores e consultar
+  administradores e convites pendentes.
+- **Insights:** o servidor respondeu `400 Bad Request` em canais com 0 seguidores. O Web só pede insights
+  com `channels_producer_insights_min_followers` seguidores (padrão 100 no bundle). A resposta com dados
+  não foi vista.
+- **Não verificado:** convidar, revogar, aceitar e remover administrador e transferir o canal. Exigem
+  uma segunda conta.
+
+## 14. Enquete, quiz e pergunta em canal
+
+- **Arquivos:** `newsletter_content.go` (novo), `newsletter_content_test.go` (novo) e `send.go`
+  (`SendMessage`, `sendNewsletter`, `getTypeFromMessage`, `getMediaTypeFromMessage`).
+- **Problema:** `sendNewsletter` não mandava o nó `<meta>`, e `getTypeFromMessage` só reconhecia a
+  enquete V1. O `BuildPollCreation` sempre gera V1 com `messageSecret`, que o WhatsApp Web não usa
+  em canal.
+- **Mudança:**
+  - `sendNewsletter` anexa `<meta polltype="creation" contenttype="text"|"image">` na enquete e no
+    quiz, e `<meta questiontype="question">` na pergunta (`WASmaxMessagePublishNewsletterRPC`).
+  - `getTypeFromMessage` devolve `poll` para as versões V1, V2, V3, V5 e V6 da enquete. Isso vale
+    também fora de canal.
+  - `getTypeFromMessage` e `getMediaTypeFromMessage` desembrulham `QuestionMessage` e
+    `QuestionReplyMessage`.
+  - `SendMessage` não gera `messageSecret` quando o destino é um canal.
+  - `BuildNewsletterPoll` gera a enquete sem `messageSecret`: V3 na escolha única e V1 na múltipla
+    (`WAWebPollsGeneratePollCreationMessageProto`).
+  - `BuildNewsletterQuiz` gera V3 com `pollType = QUIZ` e `correctAnswer`.
+  - `BuildNewsletterQuestion` gera `questionMessage` com um `extendedTextMessage` marcado com
+    `contextInfo.isQuestion` (`WAWebE2EProtoGenerator`).
+- **Decisões sem evidência completa no bundle:**
+  - O quiz sai com `polltype="creation"`, como o Web envia. O RPC também define `quiz_creation`,
+    mas nenhum módulo do Web o usa.
+  - `correctAnswer` leva só `optionName`. No Web, `optionHash` só é preenchido em enquete com imagem.
+- **Evidência** (teste local com conta real, 2026-11-23): o servidor aceitou enquete de múltipla
+  escolha, enquete de escolha única, quiz e pergunta, com `server_id` no ack. No celular do dono, os
+  quatro aparecem certos, e o quiz fixado aparece com o ícone de troféu.
+- **Atenção:** no bundle, o quiz e a pergunta dependem de configurações do servidor
+  (`channels_quiz_sending_enabled`, a capacidade `QUESTIONS` do canal e
+  `channels_question_sender_message_types_m1_enabled`). O canal de teste aceitou os dois; outros canais
+  podem recusar.
+- **Recebimento:** o post feito pelo celular do dono chega como `events.Message` com `IsFromMe = false`,
+  embora a stanza traga `is_sender="true"`. O hypermeow não lê esse atributo.
 
 ## Como atualizar a base
 

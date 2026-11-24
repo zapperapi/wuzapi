@@ -239,7 +239,9 @@ func (cli *Client) SendMessage(ctx context.Context, to types.JID, message *waE2E
 	}
 
 	isBotMode := isInlineBotMode || to.IsBot()
-	needsMessageSecret := isBotMode || cli.shouldIncludeReportingToken(message)
+	// Canal não leva messageSecret: a mensagem vai em claro, e o WhatsApp Web
+	// não gera o segredo nem na enquete de canal (WAWebPollsSendPollCreationMsgAction).
+	needsMessageSecret := isBotMode || (to.Server != types.NewsletterServer && cli.shouldIncludeReportingToken(message))
 	var extraParams nodeExtraParams
 
 	if needsMessageSecret {
@@ -729,10 +731,14 @@ func (cli *Client) sendNewsletter(
 			plaintextNode.Attrs["mediatype"] = mediaType
 		}
 	}
+	content := []waBinary.Node{plaintextNode}
+	if metaNode := newsletterMetaNode(message); metaNode != nil {
+		content = append(content, *metaNode)
+	}
 	node := waBinary.Node{
 		Tag:     "message",
 		Attrs:   attrs,
-		Content: []waBinary.Node{plaintextNode},
+		Content: content,
 	}
 	start = time.Now()
 	data, err := cli.sendNodeAndGetData(ctx, node)
@@ -921,9 +927,13 @@ func getTypeFromMessage(msg *waE2E.Message) string {
 		return getTypeFromMessage(msg.EphemeralMessage.Message)
 	case msg.DocumentWithCaptionMessage != nil:
 		return getTypeFromMessage(msg.DocumentWithCaptionMessage.Message)
+	case msg.QuestionMessage != nil:
+		return getTypeFromMessage(msg.QuestionMessage.Message)
+	case msg.QuestionReplyMessage != nil:
+		return getTypeFromMessage(msg.QuestionReplyMessage.Message)
 	case msg.ReactionMessage != nil, msg.EncReactionMessage != nil:
 		return "reaction"
-	case msg.PollCreationMessage != nil, msg.PollUpdateMessage != nil:
+	case getPollCreation(msg) != nil, msg.PollUpdateMessage != nil:
 		return "poll"
 	case getMediaTypeFromMessage(msg) != "":
 		return "media"
@@ -950,6 +960,10 @@ func getMediaTypeFromMessage(msg *waE2E.Message) string {
 		return getMediaTypeFromMessage(msg.EphemeralMessage.Message)
 	case msg.DocumentWithCaptionMessage != nil:
 		return getMediaTypeFromMessage(msg.DocumentWithCaptionMessage.Message)
+	case msg.QuestionMessage != nil:
+		return getMediaTypeFromMessage(msg.QuestionMessage.Message)
+	case msg.QuestionReplyMessage != nil:
+		return getMediaTypeFromMessage(msg.QuestionReplyMessage.Message)
 	case msg.ExtendedTextMessage != nil && msg.ExtendedTextMessage.Title != nil:
 		return "url"
 	case msg.ImageMessage != nil:
