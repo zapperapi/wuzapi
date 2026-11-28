@@ -3648,13 +3648,15 @@ func (*PrepareAddPeerDeviceOutput_Success) isPrepareAddPeerDeviceOutput_Result()
 func (*PrepareAddPeerDeviceOutput_Error) isPrepareAddPeerDeviceOutput_Result() {}
 
 type PrepareAddPeerDeviceSuccess struct {
-	state                  protoimpl.MessageState   `protogen:"open.v1"`
-	Enrolment              *PrepareAddDeviceSuccess `protobuf:"bytes,1,req,name=enrolment" json:"enrolment,omitempty"`
-	ServerDataID           *uint64                  `protobuf:"varint,2,req,name=serverDataID" json:"serverDataID,omitempty"`
-	CompanionDeviceBinding []byte                   `protobuf:"bytes,3,req,name=companionDeviceBinding" json:"companionDeviceBinding,omitempty"`
-	HistoryStartTime       *uint64                  `protobuf:"varint,4,opt,name=historyStartTime" json:"historyStartTime,omitempty"`
-	unknownFields          protoimpl.UnknownFields
-	sizeCache              protoimpl.SizeCache
+	state                       protoimpl.MessageState   `protogen:"open.v1"`
+	Enrolment                   *PrepareAddDeviceSuccess `protobuf:"bytes,1,req,name=enrolment" json:"enrolment,omitempty"`
+	ServerDataID                *uint64                  `protobuf:"varint,2,req,name=serverDataID" json:"serverDataID,omitempty"`
+	CompanionDeviceBinding      []byte                   `protobuf:"bytes,3,req,name=companionDeviceBinding" json:"companionDeviceBinding,omitempty"`
+	HistoryStartTime            *uint64                  `protobuf:"varint,4,opt,name=historyStartTime" json:"historyStartTime,omitempty"`
+	IdentityBindingBlob         []byte                   `protobuf:"bytes,5,opt,name=identityBindingBlob" json:"identityBindingBlob,omitempty"`
+	BindingSigByLabyrinthDevice []byte                   `protobuf:"bytes,6,opt,name=bindingSigByLabyrinthDevice" json:"bindingSigByLabyrinthDevice,omitempty"`
+	unknownFields               protoimpl.UnknownFields
+	sizeCache                   protoimpl.SizeCache
 }
 
 func (x *PrepareAddPeerDeviceSuccess) Reset() {
@@ -3713,6 +3715,20 @@ func (x *PrepareAddPeerDeviceSuccess) GetHistoryStartTime() uint64 {
 		return *x.HistoryStartTime
 	}
 	return 0
+}
+
+func (x *PrepareAddPeerDeviceSuccess) GetIdentityBindingBlob() []byte {
+	if x != nil {
+		return x.IdentityBindingBlob
+	}
+	return nil
+}
+
+func (x *PrepareAddPeerDeviceSuccess) GetBindingSigByLabyrinthDevice() []byte {
+	if x != nil {
+		return x.BindingSigByLabyrinthDevice
+	}
+	return nil
 }
 
 type CompanionTestMessageThreadIdInput struct {
@@ -4590,12 +4606,14 @@ const file_waWebLabyrinthWaWasm_WAWebLabyrinthWaWasm_proto_rawDesc = "" +
 	"\x1aPrepareAddPeerDeviceOutput\x12M\n" +
 	"\asuccess\x18\x01 \x01(\v21.WAWebLabyrinthWaWasm.PrepareAddPeerDeviceSuccessH\x00R\asuccess\x12\x16\n" +
 	"\x05error\x18\x02 \x01(\tH\x00R\x05errorB\b\n" +
-	"\x06result\"\xf2\x01\n" +
+	"\x06result\"\xe6\x02\n" +
 	"\x1bPrepareAddPeerDeviceSuccess\x12K\n" +
 	"\tenrolment\x18\x01 \x02(\v2-.WAWebLabyrinthWaWasm.PrepareAddDeviceSuccessR\tenrolment\x12\"\n" +
 	"\fserverDataID\x18\x02 \x02(\x04R\fserverDataID\x126\n" +
 	"\x16companionDeviceBinding\x18\x03 \x02(\fR\x16companionDeviceBinding\x12*\n" +
-	"\x10historyStartTime\x18\x04 \x01(\x04R\x10historyStartTime\"#\n" +
+	"\x10historyStartTime\x18\x04 \x01(\x04R\x10historyStartTime\x120\n" +
+	"\x13identityBindingBlob\x18\x05 \x01(\fR\x13identityBindingBlob\x12@\n" +
+	"\x1bbindingSigByLabyrinthDevice\x18\x06 \x01(\fR\x1bbindingSigByLabyrinthDevice\"#\n" +
 	"!CompanionTestMessageThreadIdInput\"\x9d\x01\n" +
 	"\"CompanionTestMessageThreadIdOutput\x12U\n" +
 	"\asuccess\x18\x01 \x01(\v29.WAWebLabyrinthWaWasm.CompanionTestMessageThreadIdSuccessH\x00R\asuccess\x12\x16\n" +

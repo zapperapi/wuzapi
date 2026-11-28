@@ -157,6 +157,7 @@ message Conversation {
 	optional int32 nonE2EeType = 68;
 	optional WAWebProtobufsAea.NonE2EEAttestation.AccountType contactAccountEncryptionAttestationType = 69;
 	optional uint32 unreadReplyToMyMessageCount = 70;
+	optional ConversationDraft draft = 71;
 }
 
 message GroupParticipant {
@@ -185,6 +186,12 @@ message PastParticipant {
 message IdentityVerificationState {
 	optional bool verified = 1;
 	optional uint64 actionSeq = 2;
+}
+
+message ConversationDraft {
+	optional WAWebProtobufsE2E.Message content = 1;
+	optional int64 editTimestampMS = 2;
+	optional uint32 editorDeviceID = 3;
 }
 
 message GroupRootKey {

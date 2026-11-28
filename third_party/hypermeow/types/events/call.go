@@ -7,6 +7,8 @@
 package events
 
 import (
+	"time"
+
 	waBinary "github.com/polymorfa/hypermeow/binary"
 	"github.com/polymorfa/hypermeow/types"
 )
@@ -15,6 +17,10 @@ import (
 type CallOffer struct {
 	types.BasicCallMeta
 	types.CallRemoteMeta
+
+	// Queued is how long the offer waited in the server queue before delivery
+	// (the "e" attribute of the <call> stanza, in seconds). Zero when absent.
+	Queued time.Duration
 
 	Data *waBinary.Node // The call offer data
 }

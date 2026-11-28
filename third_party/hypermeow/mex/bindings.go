@@ -17,7 +17,7 @@ const (
 
 const SourceRevision = "74509efe262b37b26bed05486c9f4160db5e841b"
 
-const WebVersion = "2.3000.1055901559"
+const WebVersion = "2.3000.1056475087"
 
 const (
 	BizCreateOrder               OperationName = "BizCreateOrder"

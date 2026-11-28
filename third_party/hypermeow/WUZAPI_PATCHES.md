@@ -88,6 +88,11 @@ Quando a investigação terminar, manter só o formato que o servidor aceita e r
   (`WAWebHandleMsgReceiptParser`, WhatsApp Web 2.3000.1055901559).
 - **Mudança:** `events.Receipt` leva `ErrorType` nos recibos `type="error"`. O wuzapi (`wmiau.go`)
   envia o webhook `ReadReceipt` com `state: "Failed"` e `reason: "integrity-drop"`.
+- **WhatsApp Web 2.3000.1056475087:** o `WASmaxReceiptDeliverRPC` declara mais dois recibos de erro:
+  `<error type="bot-unavailable"/>` e `<biz reason="restricted_country_non_member"/>` com
+  `<error type="feature-incapable"/>`. O cliente oficial não muda o estado da mensagem para eles.
+  `events.Receipt` leva `ErrorReason` (atributo `reason` do filho `<biz>`, lido por
+  `parseReceiptErrorReason`). O wuzapi registra esses recibos no log e não envia webhook.
 
 ## 8. Status em grupo (`is_group_status`)
 
@@ -186,6 +191,17 @@ Quando a investigação terminar, manter só o formato que o servidor aceita e r
   `WAWebQueryProductSingleCollectionQuery`). Entre os bundles `1053682356` e `1055901559` só o ID
   mudou nessas consultas. `DeleteNewsletter`, `BizCreateOrder` e `BizQueryOrder` já tinham o ID atual.
 - **Teste dos IDs:** ver a seção 11.
+- **Atualização para 2.3000.1056475087:** o mesmo procedimento, com o bundle `1056475087`.
+  - Entraram 3 mensagens (`DraftMessageSync`, `ConversationDraft`, `DeviceCapabilities.DraftSync`),
+    2 enums (`DraftMessageSync.Action` e `ClearReason`), 17 campos e 13 valores de enum. São os
+    dados da sincronização de rascunho: `ProtocolMessage.draftMessageSync` (campo 43, tipo
+    `DRAFT_MESSAGE_SYNC = 45`), `Conversation.draft` (71), `DeviceCapabilities.draftSync` (17) e
+    `DeviceProps.HistorySyncConfig.supportDraftSync` (29). O wuzapi não anuncia `supportDraftSync`.
+  - `VpcRequestMessage`: `requestID` (campo 2) saiu e `token` (campo 4, `bytes`) entrou.
+  - `PrepareAddPeerDeviceSuccess` (`WAWebLabyrinthWaWasm`) recebeu `identityBindingBlob` e
+    `bindingSigByLabyrinthDevice`.
+  - `waVersion` em `store/clientpayload.go` e em `mex/spec.json` passou a `2.3000.1056475087`.
+  - Nenhum ID de consulta MEX usado aqui mudou entre os bundles `1055901559` e `1056475087`.
 
 ## 11. Consultas de catálogo por HTTP
 
@@ -376,6 +392,18 @@ Quando a investigação terminar, manter só o formato que o servidor aceita e r
     `XWA2GroupRegularGroup` e o erro "not a community".
   - A sessão continuou conectada depois dos testes.
 - **Não testado:** o erro 401 (link pedido por quem não é administrador) e o 403 (conta fora do grupo).
+
+## 17. Tempo de fila da oferta de chamada
+
+- **Arquivos:** `call.go` (`handleCallEvent`) e `types/events/call.go` (`CallOffer.Queued`).
+- **Problema:** o cliente oficial não toca uma oferta de chamada que ficou 90 segundos ou mais na
+  fila do servidor, nem uma oferta com o filho `<silence reason="...">`
+  (`WAWebVoipCallOfferRingWindow` e `WAWebVoipCallOfferStanzaParser`, WhatsApp Web
+  2.3000.1056475087). O tempo de fila vem no atributo `e` do nó `<call>`, em segundos. O
+  hypermeow não lia esse atributo.
+- **Mudança:** `events.CallOffer` leva `Queued` (`time.Duration`, zero quando o atributo falta).
+  O motor de chamadas do wuzapi (`internal/meowcaller/offer_ring_window.go`) não atende nem toca
+  uma oferta 1:1 vencida ou silenciada. A oferta de chamada em grupo não mudou.
 
 ## Como atualizar a base
 

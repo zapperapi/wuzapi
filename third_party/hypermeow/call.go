@@ -8,6 +8,7 @@ package whatsmeow
 
 import (
 	"context"
+	"time"
 
 	waBinary "github.com/polymorfa/hypermeow/binary"
 	"github.com/polymorfa/hypermeow/types"
@@ -45,7 +46,8 @@ func (cli *Client) handleCallEvent(ctx context.Context, node *waBinary.Node) {
 				RemotePlatform: ag.String("platform"),
 				RemoteVersion:  ag.String("version"),
 			},
-			Data: &child,
+			Queued: time.Duration(ag.OptionalInt("e")) * time.Second,
+			Data:   &child,
 		})
 	case "offer_notice":
 		cli.dispatchEvent(&events.CallOfferNotice{

@@ -1285,6 +1285,11 @@ func (mycli *MyClient) myEventHandler(rawEvt interface{}) {
 			postmap["reason"] = evt.ErrorType
 			log.Warn().Strs("id", evt.MessageIDs).Str("source", evt.SourceString()).Str("timestamp", fmt.Sprintf("%v", evt.Timestamp)).Msg("Message dropped by WhatsApp integrity")
 		} else {
+			if evt.Type == types.ReceiptTypeError {
+				// Outros recibos de erro (feature-incapable, bot-unavailable). O cliente
+				// oficial não muda o estado da mensagem; o registro fica para diagnóstico.
+				log.Warn().Strs("id", evt.MessageIDs).Str("source", evt.SourceString()).Str("errorType", evt.ErrorType).Str("errorReason", evt.ErrorReason).Msg("Error receipt without state change")
+			}
 			// Discard webhooks for inactive or other delivery types
 			return
 		}

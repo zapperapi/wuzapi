@@ -75,6 +75,7 @@ func (cli *Client) parseReceipt(node *waBinary.Node) (*events.Receipt, []waBinar
 		MessageSender: ag.OptionalJIDOrEmpty("recipient"),
 	}
 	receipt.ErrorType = parseReceiptErrorType(node, receipt.Type)
+	receipt.ErrorReason = parseReceiptErrorReason(node, receipt.Type)
 	if source.IsGroup && source.Sender.IsEmpty() {
 		participantTags := node.GetChildrenByTag("participants")
 		if len(participantTags) == 0 {
@@ -114,6 +115,20 @@ func parseReceiptErrorType(node *waBinary.Node, receiptType types.ReceiptType) s
 		return ""
 	}
 	return errorNode.AttrGetter().OptionalString("type")
+}
+
+// parseReceiptErrorReason returns the reason attribute of the <biz> child of an
+// error receipt, e.g. "restricted_country_non_member". It returns "" for other
+// receipt types.
+func parseReceiptErrorReason(node *waBinary.Node, receiptType types.ReceiptType) string {
+	if receiptType != types.ReceiptTypeError {
+		return ""
+	}
+	bizNode, ok := node.GetOptionalChildByTag("biz")
+	if !ok {
+		return ""
+	}
+	return bizNode.AttrGetter().OptionalString("reason")
 }
 
 func (cli *Client) backgroundIfAsyncAck(fn func()) {

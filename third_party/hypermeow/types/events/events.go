@@ -477,11 +477,30 @@ type Receipt struct {
 	// ErrorType is the type attribute of the <error> child. It is only set when
 	// Type is types.ReceiptTypeError.
 	ErrorType string
+	// ErrorReason is the reason attribute of the <biz> child of an error receipt,
+	// e.g. "restricted_country_non_member". It is only set when Type is
+	// types.ReceiptTypeError.
+	ErrorReason string
 }
 
 // ReceiptErrorIntegrityDrop is the ErrorType of a message that WhatsApp's
 // integrity systems dropped. The message did not reach the recipient.
 const ReceiptErrorIntegrityDrop = "integrity-drop"
+
+// Other error receipts that the server declares since WhatsApp Web
+// 2.3000.1056475087 (WASmaxReceiptDeliverRPC). The official client does not
+// change the message state for them.
+const (
+	// ReceiptErrorFeatureIncapable is the ErrorType of a message that the
+	// recipient cannot receive. ErrorReason says why when the server tells.
+	ReceiptErrorFeatureIncapable = "feature-incapable"
+	// ReceiptErrorBotUnavailable is the ErrorType of a message to a bot that
+	// is not available.
+	ReceiptErrorBotUnavailable = "bot-unavailable"
+	// ReceiptReasonRestrictedCountryNonMember is the ErrorReason of a business
+	// message refused because of a country restriction.
+	ReceiptReasonRestrictedCountryNonMember = "restricted_country_non_member"
+)
 
 // IsIntegrityDrop reports whether the receipt says that the message was dropped
 // by WhatsApp's integrity systems. The official client marks such a message as failed.

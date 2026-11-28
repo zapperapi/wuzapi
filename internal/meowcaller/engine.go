@@ -531,6 +531,13 @@ func (e *engine) onOffer(ev *events.CallOffer) {
 		e.c.log.Warn().Str("call_id", ev.CallID).Msg("ignoring already-ended offer; not a live call")
 		return
 	}
+	// O cliente oficial não toca uma oferta silenciada pelo servidor nem uma que
+	// ficou tempo demais na fila (ver offer_ring_window.go).
+	if reason := offerSkipReason(ev.Data, ev.Queued); reason != "" {
+		e.c.log.Warn().Str("call_id", ev.CallID).Str("reason", reason).Dur("queued", ev.Queued).Msg("ignoring offer that can no longer ring")
+		e.c.diag.Emit("meta", map[string]any{"event": "offer_skipped", "call_id": ev.CallID, "reason": reason, "queued_ms": ev.Queued.Milliseconds()})
+		return
+	}
 
 	callKey, err := decryptInboundCallKey(context.Background(), e.c.wa, ev)
 	if err != nil {

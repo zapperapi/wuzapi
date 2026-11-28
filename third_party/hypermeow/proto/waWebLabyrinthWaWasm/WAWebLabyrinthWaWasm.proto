@@ -361,6 +361,8 @@ message PrepareAddPeerDeviceSuccess {
 	required uint64 serverDataID = 2;
 	required bytes companionDeviceBinding = 3;
 	optional uint64 historyStartTime = 4;
+	optional bytes identityBindingBlob = 5;
+	optional bytes bindingSigByLabyrinthDevice = 6;
 }
 
 message CompanionTestMessageThreadIdInput {

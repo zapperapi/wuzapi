@@ -90,6 +90,10 @@ message DeviceCapabilities {
 		optional bool refreshSupported = 1;
 	}
 
+	message DraftSync {
+		optional uint32 version = 1;
+	}
+
 	optional ChatLockSupportLevel chatLockSupportLevel = 1;
 	optional LIDMigration lidMigration = 2;
 	optional BusinessBroadcast businessBroadcast = 3;
@@ -106,4 +110,5 @@ message DeviceCapabilities {
 	optional PhoneNumberSharing phoneNumberSharing = 14;
 	optional RecentConversationsOnDemand recentConversationsOnDemand = 15;
 	optional AiMuseJarvisGzip aiMuseJarvisGzip = 16;
+	optional DraftSync draftSync = 17;
 }

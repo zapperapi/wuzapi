@@ -82,3 +82,29 @@ func TestParseReceiptErrorType(t *testing.T) {
 		t.Fatalf("error receipt without <error>: got %q, want empty", got)
 	}
 }
+
+func TestParseReceiptErrorReason(t *testing.T) {
+	restricted := waBinary.Node{Tag: "receipt", Content: []waBinary.Node{
+		{Tag: "biz", Attrs: waBinary.Attrs{"reason": "restricted_country_non_member"}},
+		{Tag: "error", Attrs: waBinary.Attrs{"type": "feature-incapable"}},
+	}}
+	if got := parseReceiptErrorReason(&restricted, types.ReceiptTypeError); got != "restricted_country_non_member" {
+		t.Fatalf("error receipt: got %q, want restricted_country_non_member", got)
+	}
+	if got := parseReceiptErrorType(&restricted, types.ReceiptTypeError); got != "feature-incapable" {
+		t.Fatalf("error receipt type: got %q, want feature-incapable", got)
+	}
+	if got := parseReceiptErrorReason(&restricted, types.ReceiptTypeDelivered); got != "" {
+		t.Fatalf("delivered receipt: got %q, want empty", got)
+	}
+	bizWithoutReason := waBinary.Node{Tag: "receipt", Content: []waBinary.Node{
+		{Tag: "biz", Attrs: waBinary.Attrs{"host_storage": "2"}},
+	}}
+	if got := parseReceiptErrorReason(&bizWithoutReason, types.ReceiptTypeError); got != "" {
+		t.Fatalf("error receipt with <biz> without reason: got %q, want empty", got)
+	}
+	noChild := waBinary.Node{Tag: "receipt"}
+	if got := parseReceiptErrorReason(&noChild, types.ReceiptTypeError); got != "" {
+		t.Fatalf("error receipt without <biz>: got %q, want empty", got)
+	}
+}

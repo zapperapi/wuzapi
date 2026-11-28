@@ -65,6 +65,7 @@ message DeviceProps {
 		optional bool supportNewsletter = 25;
 		optional bool supportUniversalReachChat = 26;
 		optional bool supportOmittedConversationMetadata = 28;
+		optional bool supportDraftSync = 29;
 	}
 
 	message AppVersion {

@@ -705,6 +705,7 @@ type DeviceProps_HistorySyncConfig struct {
 	SupportNewsletter                        *bool                  `protobuf:"varint,25,opt,name=supportNewsletter" json:"supportNewsletter,omitempty"`
 	SupportUniversalReachChat                *bool                  `protobuf:"varint,26,opt,name=supportUniversalReachChat" json:"supportUniversalReachChat,omitempty"`
 	SupportOmittedConversationMetadata       *bool                  `protobuf:"varint,28,opt,name=supportOmittedConversationMetadata" json:"supportOmittedConversationMetadata,omitempty"`
+	SupportDraftSync                         *bool                  `protobuf:"varint,29,opt,name=supportDraftSync" json:"supportDraftSync,omitempty"`
 	unknownFields                            protoimpl.UnknownFields
 	sizeCache                                protoimpl.SizeCache
 }
@@ -928,6 +929,13 @@ func (x *DeviceProps_HistorySyncConfig) GetSupportOmittedConversationMetadata() 
 	return false
 }
 
+func (x *DeviceProps_HistorySyncConfig) GetSupportDraftSync() bool {
+	if x != nil && x.SupportDraftSync != nil {
+		return *x.SupportDraftSync
+	}
+	return false
+}
+
 type DeviceProps_AppVersion struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Primary       *uint32                `protobuf:"varint,1,opt,name=primary" json:"primary,omitempty"`
@@ -1008,7 +1016,7 @@ var File_waCompanionReg_WACompanionReg_proto protoreflect.FileDescriptor
 
 const file_waCompanionReg_WACompanionReg_proto_rawDesc = "" +
 	"\n" +
-	"#waCompanionReg/WACompanionReg.proto\x12\x0eWACompanionReg\"\xdb\x13\n" +
+	"#waCompanionReg/WACompanionReg.proto\x12\x0eWACompanionReg\"\x87\x14\n" +
 	"\vDeviceProps\x12\x0e\n" +
 	"\x02os\x18\x01 \x01(\tR\x02os\x12@\n" +
 	"\aversion\x18\x02 \x01(\v2&.WACompanionReg.DeviceProps.AppVersionR\aversion\x12L\n" +
@@ -1017,7 +1025,7 @@ const file_waCompanionReg_WACompanionReg_proto_rawDesc = "" +
 	"\x11historySyncConfig\x18\x05 \x01(\v2-.WACompanionReg.DeviceProps.HistorySyncConfigR\x11historySyncConfig\x12\x1e\n" +
 	"\n" +
 	"deviceName\x18\x06 \x01(\tR\n" +
-	"deviceName\x1a\xa9\f\n" +
+	"deviceName\x1a\xd5\f\n" +
 	"\x11HistorySyncConfig\x12,\n" +
 	"\x11fullSyncDaysLimit\x18\x01 \x01(\rR\x11fullSyncDaysLimit\x120\n" +
 	"\x13fullSyncSizeMbLimit\x18\x02 \x01(\rR\x13fullSyncSizeMbLimit\x12&\n" +
@@ -1046,7 +1054,8 @@ const file_waCompanionReg_WACompanionReg_proto_rawDesc = "" +
 	"\x15supportInlineContacts\x18\x18 \x01(\bR\x15supportInlineContacts\x12,\n" +
 	"\x11supportNewsletter\x18\x19 \x01(\bR\x11supportNewsletter\x12<\n" +
 	"\x19supportUniversalReachChat\x18\x1a \x01(\bR\x19supportUniversalReachChat\x12N\n" +
-	"\"supportOmittedConversationMetadata\x18\x1c \x01(\bR\"supportOmittedConversationMetadata\x1a\x9a\x01\n" +
+	"\"supportOmittedConversationMetadata\x18\x1c \x01(\bR\"supportOmittedConversationMetadata\x12*\n" +
+	"\x10supportDraftSync\x18\x1d \x01(\bR\x10supportDraftSync\x1a\x9a\x01\n" +
 	"\n" +
 	"AppVersion\x12\x18\n" +
 	"\aprimary\x18\x01 \x01(\rR\aprimary\x12\x1c\n" +
